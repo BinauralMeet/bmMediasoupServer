@@ -236,11 +236,8 @@ function remoteLeft(ps: string[], room:Room){
   sendRoom(remoteLeftMsg, room)
 }
 
-handlersForPeer.set('connectTransport', (base)=>{
-  const msg = base as MSConnectTransportMessage
-  const peer = getPeerAndWorker(msg.peer)
-  send(msg, peer.ws)
-})
+setRelayHandlers('connectTransport')
+
 handlersForPeer.set('produceTransport', relayPeerToWorker)
 handlersForWorker.set('produceTransport', (base, ws)=>{
   const msg = base as MSProduceTransportReply

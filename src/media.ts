@@ -113,7 +113,7 @@ function send(base: MSMessage, ws: websocket.WebSocket){
 
 // start mediasoup
 console.log('starting mediasoup')
-startMediasoup().then(({worker, router, audioLevelObserver}) => {
+startMediasoup().then(({worker, router}) => {
   //  set message handlers
   handlers.set('workerAdd',(base)=>{
     const msg = base as MSPeerMessage
@@ -205,14 +205,7 @@ startMediasoup().then(({worker, router, audioLevelObserver}) => {
         producer.on('transportclose', () => {
           console.log('producer\'s transport closed', producer.id);
           closeProducer(producer);
-        });
-        // monitor audio level of this producer. we call addProducer() here,
-        // but we don't ever need to call removeProducer() because the core
-        // AudioLevelObserver code automatically removes closed producers
-        if (producer.kind === 'audio') {
-          audioLevelObserver.addProducer({ producerId: producer.id });
-        }
-
+        })
         producers.set(producer.id, producer)
         sendMsg.producer = producer.id
         send(sendMsg, ws)
@@ -267,8 +260,8 @@ startMediasoup().then(({worker, router, audioLevelObserver}) => {
         sendMsg.kind = consumer.kind
         send(sendMsg, ws)
       }).catch((e)=>{
-        console.error(`consume-transport: server-side producer ${msg.producer} not found`)
-        sendMsg.error = `server-side producer ${msg.producer} not found`
+        console.error(`consume-transport: for producer ${msg.producer} failed`)
+        sendMsg.error = `consume for ${msg.producer} failed`
         send(sendMsg, ws)
       })
     }
@@ -330,5 +323,5 @@ startMediasoup().then(({worker, router, audioLevelObserver}) => {
       console.log('Try to connect to main server.')
       connectToMain()
     }
-  }, 1000)
+  }, 5000)
 })
