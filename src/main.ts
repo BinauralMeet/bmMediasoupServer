@@ -194,7 +194,7 @@ function relayPeerToWorker(base: MSMessage){
   const msg = base as MSPeerMessage
   const remoteOrpeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
   if (remoteOrpeer.worker){
-    console.log(`${msg.type} from ${msg.peer} relayed to ${remoteOrpeer.worker.id}`)
+    console.log(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrpeer.worker.id}`)
     const {remote, ...msg_} = msg
     send(msg_, remoteOrpeer.worker.ws)
   }
@@ -203,6 +203,7 @@ function relayWorkerToPeer(base: MSMessage){
   const msg = base as MSPeerMessage
   const peer = peers.get(msg.peer)
   if (peer){
+    console.log(`W=>P ${msg.type} from ${peer.worker?.id} relayed to ${peer.peer}`)
     send(msg, peer.ws)
   }
 }
@@ -271,7 +272,7 @@ setRelayHandlers('resumeConsumer')
 function onWsMessagePeer(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const base = JSON.parse(messageData.data.toString()) as MSMessage
-  console.log(`peer msg ${base.type} from ${(base as any).peer}`)
+  console.log(`PeerMsg ${base.type} from ${(base as any).peer}`)
   const handler = handlersForPeer.get(base.type)
   if (handler){
     handler(base, ws)
@@ -283,7 +284,7 @@ function onWsMessagePeer(messageData: websocket.MessageEvent){
 function onWsMessageWorker(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const base = JSON.parse(messageData.data.toString()) as MSMessage
-  console.log(`worker msg ${base.type} for ${(base as any).peer}`)
+  console.log(`WorkerMsg ${base.type} to ${(base as any).peer}`)
   const handler = handlersForWorker.get(base.type)
   if (handler){
     handler(base, ws)
