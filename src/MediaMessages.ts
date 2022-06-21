@@ -1,14 +1,16 @@
 import * as mediasoup from 'mediasoup'
 export type MSMessageType = 'connect' | 'join' | 'rtpCapabilities' | 'leave' |
   'remoteUpdate' | 'remoteLeft' |
-  'addWorker' | 'deleteWorker' |
-  'createTransport' | 'connectTransport' | 'produceTransport' | 'consumeTransport' | 'closeTransport'
+  'workerAdd' | 'workerDelete' | 'workerUpdate' |
+  'createTransport' | 'closeTransport' | 'connectTransport' |
+  'produceTransport' | 'closeProducer' | 'consumeTransport' | 'resumeConsumer'
 export interface MSMessage{
   type: MSMessageType
   sn?: number
 }
 export interface MSPeerMessage extends MSMessage{
   peer: string
+  remote?: string
 }
 export type MSTrackRole = 'camera' | 'mic' | 'window' | string
 export interface MSRemoteProducer{
@@ -31,6 +33,10 @@ export interface MSRemoteLeftMessage extends MSMessage{
 export interface MSRoomMessage extends MSPeerMessage{
   room: string
 }
+export interface MSWorkerUpdateMessage extends MSPeerMessage{
+  load: number
+}
+
 export interface MSRTPCapabilitiesReply extends MSPeerMessage{
   rtpCapabilities: mediasoup.types.RtpCapabilities
 }
@@ -72,6 +78,13 @@ export interface MSProduceTransportReply extends MSPeerMessage{
   error?:string
 }
 
+export interface MSCloseProducerMessage extends MSPeerMessage{
+  producer: string
+}
+export interface MSCloseProducerReply extends MSPeerMessage{
+  error?: string
+}
+
 export interface MSConsumeTransportMessage extends MSPeerMessage{
   transport: string
   producer: string
@@ -83,6 +96,13 @@ export interface MSConsumeTransportReply extends MSPeerMessage{
   kind?: mediasoup.types.MediaKind
   rtpParameters?: mediasoup.types.RtpParameters
   error?:string
+}
+
+export interface MSResumeConsumerMessage extends MSPeerMessage{
+  consumer: string
+}
+export interface MSResumeConsumerReply extends MSPeerMessage{
+  error?: string
 }
 
 export interface MSCloseTransportMessage extends MSMessage{

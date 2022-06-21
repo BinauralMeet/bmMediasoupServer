@@ -3,13 +3,14 @@ import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
 import {MSConnectTransportMessage, MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply,
-  MSPeerMessage, MSProduceTransportReply, MSRemoteProducer, MSRemotePeer, MSRemoteUpdateMessage, MSCloseTransportMessage} from './MediaMessages'
+  MSPeerMessage, MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage, MSCreateTransportMessage} from './MediaMessages'
 import { exit } from 'process'
 
 const log = debugModule('bmMsM');
 const warn = debugModule('bmMsM:WARN');
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
+
 
 /*
     main server only for signaling
@@ -32,7 +33,9 @@ const workers = new Map<string, Worker>()
 
 function getVacantWorker(){
   if (workers.size){
-    return Array.from(workers.values()).reduce((prev, cur)=> prev.stat.load < prev.stat.load ? prev : cur)
+    const worker = Array.from(workers.values()).reduce((prev, cur)=> prev.stat.load < cur.stat.load ? prev : cur)
+    console.log(`worker ${worker.id} with load ${worker.stat.load} is selected.`)
+    return worker
   }
   return undefined
 }
@@ -96,10 +99,31 @@ function getPeer(id: string):Peer{
   }
   return peer
 }
-function deletePeer(id: string){
-  const peer = getPeer(id)
+function deletePeer(peer: Peer){
+  //   delete from room
   peer.room?.peers.delete(peer)
   checkDeleteRoom(peer.room)
+
+  //  delete from peers
+  peer.producers.forEach(producer => {
+    const msg: MSCloseProducerMessage= {
+      type: 'closeProducer',
+      peer: peer.peer,
+      producer: producer.id,
+    }
+    send(msg, peer.worker!.ws)
+  })
+  peer.transports.forEach(transport => {
+    const msg: MSCloseTransportMessage= {
+      type: 'closeTransport',
+      transport,
+    }
+    send(msg, peer.worker!.ws)
+  })
+  remoteLeft([peer.peer], peer.room!)
+  peers.delete(peer.peer)
+  const peerList = Array.from(peers.keys()).reduce((prev, cur) => `${prev} ${cur}`, '')
+  console.log(`Peers: ${peerList}`)
 }
 function checkDeleteRoom(room?: Room){
   if (room && room.peers.size === 0){
@@ -138,9 +162,12 @@ handlersForPeer.set('join',(base, ws)=>{
 })
 handlersForPeer.set('leave',(base)=>{
   const msg = base as MSPeerMessage
-  deletePeer(msg.peer)
+  const peer = peers.get(msg.peer)
+  if (peer){
+    deletePeer(peer)
+  }
 })
-handlersForPeer.set('addWorker',(base, ws)=>{
+handlersForPeer.set('workerAdd',(base, ws)=>{
   const msg = base as MSPeerMessage
   const unique = makeUniqueId(msg.peer, workers)
   msg.peer = unique
@@ -151,16 +178,25 @@ handlersForPeer.set('addWorker',(base, ws)=>{
   ws.addEventListener('message', onWsMessageWorker)
   console.log(`addWorker ${msg.peer}`)
 })
-handlersForWorker.set('deleteWorker',(base, ws)=>{
+handlersForWorker.set('workerDelete',(base, ws)=>{
   const msg = base as MSPeerMessage
   workers.delete(msg.peer)
+})
+handlersForWorker.set('workerUpdate',(base, ws)=>{
+  const msg = base as MSWorkerUpdateMessage
+  const worker = workers.get(msg.peer)
+  if (worker){
+    worker.stat.load = msg.load
+  }
 })
 
 function relayPeerToWorker(base: MSMessage){
   const msg = base as MSPeerMessage
-  const peer = getPeerAndWorker(msg.peer)
-  if (peer.worker){
-    send(msg, peer.worker.ws)
+  const remoteOrpeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
+  if (remoteOrpeer.worker){
+    console.log(`${msg.type} from ${msg.peer} relayed to ${remoteOrpeer.worker.id}`)
+    const {remote, ...msg_} = msg
+    send(msg_, remoteOrpeer.worker.ws)
   }
 }
 function relayWorkerToPeer(base: MSMessage){
@@ -176,14 +212,35 @@ function setRelayHandlers(mt: MSMessageType){
 }
 setRelayHandlers('rtpCapabilities')
 handlersForPeer.set('createTransport', relayPeerToWorker)
-handlersForWorker.set('createTransport', (base, ws)=>{
+handlersForWorker.set('createTransport', (base)=>{
   const msg = base as MSCreateTransportReply
   const peer = getPeer(msg.peer)
   if (msg.transport){ peer.transports.push(msg.transport) }
   send(base, peer.ws)
 })
 
-setRelayHandlers('connectTransport')
+function remoteUpdated(ps: Peer[], room: Room){
+  if (!ps.length) return
+  const remoteUpdateMsg:MSRemoteUpdateMessage = {
+    type:'remoteUpdate',
+    remotes: ps.map(p=>toMSRemotePeer(p))
+  }
+  sendRoom(remoteUpdateMsg, room)
+}
+function remoteLeft(ps: string[], room:Room){
+  if (!ps.length) return
+  const remoteLeftMsg:MSRemoteLeftMessage = {
+    type:'remoteLeft',
+    remotes: ps
+  }
+  sendRoom(remoteLeftMsg, room)
+}
+
+handlersForPeer.set('connectTransport', (base)=>{
+  const msg = base as MSConnectTransportMessage
+  const peer = getPeerAndWorker(msg.peer)
+  send(msg, peer.ws)
+})
 handlersForPeer.set('produceTransport', relayPeerToWorker)
 handlersForWorker.set('produceTransport', (base, ws)=>{
   const msg = base as MSProduceTransportReply
@@ -195,18 +252,29 @@ handlersForWorker.set('produceTransport', (base, ws)=>{
     peer.producers.push({id:msg.producer, kind: msg.kind, role: msg.role})
   }
   send(base, peer.ws)
-  const remoteUpdateMsg:MSRemoteUpdateMessage = {
-    type:'remoteUpdate',
-    remotes: [toMSRemotePeer(peer)]
-  }
-  sendRoom(remoteUpdateMsg, peer.room!)
+  remoteUpdated([peer], peer.room!)
 })
+handlersForPeer.set('closeProducer', (base)=>{
+  const msg = base as MSCloseProducerMessage
+  const peer = peers.get(msg.peer)
+  if (peer){
+    peer.producers = peer.producers.filter(pr => pr.id !== msg.producer)
+    console.log(`Close producer ${msg.producer}` +
+      `remains:[${peer.producers.map(rp => rp.id).reduce((prev, cur)=>`${prev} ${cur}`, '')}]`)
+    remoteUpdated([peer], peer.room!)
+  }
+  relayPeerToWorker(base)
+})
+handlersForWorker.set('closeProducer', relayWorkerToPeer)
+
 setRelayHandlers('consumeTransport')
+setRelayHandlers('resumeConsumer')
+
 
 function onWsMessagePeer(messageData: websocket.MessageEvent){
   const ws = messageData.target
-  console.log(`onMessagePeer(${messageData.data.toString()})`)
   const base = JSON.parse(messageData.data.toString()) as MSMessage
+  console.log(`peer msg ${base.type} from ${(base as any).peer}`)
   const handler = handlersForPeer.get(base.type)
   if (handler){
     handler(base, ws)
@@ -217,8 +285,8 @@ function onWsMessagePeer(messageData: websocket.MessageEvent){
 }
 function onWsMessageWorker(messageData: websocket.MessageEvent){
   const ws = messageData.target
-  console.log(`onMessageWorker(${messageData.data.toString()})`)
   const base = JSON.parse(messageData.data.toString()) as MSMessage
+  console.log(`worker msg ${base.type} for ${(base as any).peer}`)
   const handler = handlersForWorker.get(base.type)
   if (handler){
     handler(base, ws)
@@ -248,14 +316,7 @@ async function main() {
       ws.addEventListener('close', (ev) =>{
         const peer = Array.from(peers.values()).find(p => p.ws === ws)
         if (peer){
-          peer.transports.forEach(transport => {
-            const msg: MSCloseTransportMessage= {
-              type: 'closeTransport',
-              transport,
-            }
-            send(msg, peer.worker!.ws)
-          })
-          peers.delete(peer.peer)
+          deletePeer(peer)
         }
       })
     })

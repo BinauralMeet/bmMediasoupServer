@@ -2,9 +2,9 @@ import websocket from 'ws'
 import * as mediasoup from 'mediasoup'
 import debugModule from 'debug'
 import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportReply, MSRTPCapabilitiesReply,
-   MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage, MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply} from './MediaMessages'
-
+   MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage, MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage, MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage} from './MediaMessages'
 import { networkInterfaces } from "os";
+
 function getIpAddress() {
   const nets = networkInterfaces();
   const net = nets["en0"]?.find((v) => v.family == "IPv4");
@@ -60,10 +60,35 @@ async function startMediasoup() {
 }
 
 
+let ws = new websocket.WebSocket(null)
 let workerId = ''
+let workerLoad = 0
 const transports = new Map<string, mediasoup.types.Transport>()
 const producers = new Map<string, mediasoup.types.Producer>()
+const consumers = new Map<string, mediasoup.types.Consumer>()
 const handlers = new Map<MSMessageType, (base:MSMessage, ws:websocket.WebSocket)=>void>()
+
+function updateWorkerLoad(){
+  if (workerLoad !== producers.size){
+    workerLoad = producers.size
+    const msg:MSWorkerUpdateMessage = {
+      type:'workerUpdate',
+      peer:workerId,
+      load:workerLoad
+    }
+    send(msg, ws)
+  }
+}
+
+function clearMediasoup(){
+  consumers.forEach(c => c.close())
+  consumers.clear()
+  producers.forEach(p => p.close())
+  producers.clear()
+  transports.forEach(t => t.close())
+  transports.clear()
+  updateWorkerLoad()
+}
 
 function closeProducer(producer:mediasoup.types.Producer) {
   console.log('closing producer', producer.id, producer.appData);
@@ -74,9 +99,11 @@ function closeProducer(producer:mediasoup.types.Producer) {
   } catch (e) {
     err(e);
   }
+  updateWorkerLoad()
 }
 function closeConsumer(consumer: mediasoup.types.Consumer) {
   console.log('closing consumer', consumer.id, consumer.appData);
+  consumers.delete(consumer.id)
   consumer.close();
 }
 
@@ -84,12 +111,11 @@ function send(base: MSMessage, ws: websocket.WebSocket){
   ws.send(JSON.stringify(base))
 }
 
-async function main() {
-  // start mediasoup
-  console.log('starting mediasoup')
-  const {worker, router, audioLevelObserver} = await startMediasoup()
-
-  handlers.set('addWorker',(base)=>{
+// start mediasoup
+console.log('starting mediasoup')
+startMediasoup().then(({worker, router, audioLevelObserver}) => {
+  //  set message handlers
+  handlers.set('workerAdd',(base)=>{
     const msg = base as MSPeerMessage
     workerId = msg.peer
     console.log(`workerId: ${workerId}`)
@@ -190,8 +216,25 @@ async function main() {
         producers.set(producer.id, producer)
         sendMsg.producer = producer.id
         send(sendMsg, ws)
+        updateWorkerLoad()
       })
     }
+  })
+  handlers.set('closeProducer', (base) => {
+    const msg = base as MSCloseProducerMessage
+    const producerObject = producers.get(msg.producer)
+    const {producer, ...msg_} = msg
+    const reply:MSCloseProducerReply = {
+      ...msg,
+    }
+    if (producerObject){
+      producers.delete(producer)
+      producerObject.close()
+      updateWorkerLoad()
+    }else{
+      reply.error = 'producer not found.'
+    }
+    send(reply, ws)
   })
 
   handlers.set('consumeTransport', (base) => {
@@ -210,6 +253,7 @@ async function main() {
         paused:true,
         appData: { peer:msg.peer, transportId: transport.id}
       }).then((consumer)=>{
+        consumers.set(consumer.id, consumer)
         consumer.on('transportclose', () => {
           log(`consumer's transport closed`, consumer.id)
           closeConsumer(consumer)
@@ -222,31 +266,69 @@ async function main() {
         sendMsg.rtpParameters = consumer.rtpParameters
         sendMsg.kind = consumer.kind
         send(sendMsg, ws)
+      }).catch((e)=>{
+        console.error(`consume-transport: server-side producer ${msg.producer} not found`)
+        sendMsg.error = `server-side producer ${msg.producer} not found`
+        send(sendMsg, ws)
       })
     }
   })
 
+  handlers.set('resumeConsumer', (base) => {
+    const msg = base as MSResumeConsumerMessage
+    const consumerObject = consumers.get(msg.consumer)
+    const {consumer, ...msg_} = msg
+    const reply:MSResumeConsumerReply = {
+      ...msg_,
+    }
+    if (consumerObject){
+      consumerObject.resume().then(()=>{
+        console.log(`consumer.resume() for ${consumer} succeed.`)
+        send(reply, ws)
+      }).catch(()=>{
+        reply.error = `consumer.resume() for ${consumer} failed.`
+        send(reply, ws)
+      })
+    }else{
+      reply.error = `consumer ${consumer} not found.`
+      send(reply, ws)
+    }
+  })
 
-  // start https server, falling back to http if https fails
-  console.log('connecting to main server');
-  const ws = new websocket.WebSocket(config.mainServer)
+  //  function defines which use worker etc.
+  function connectToMain(){
+    clearMediasoup()
+    ws = new websocket.WebSocket(config.mainServer)
     ws.onopen = (ev) => {
-        let ip = getIpAddress()
-        if (!ip) ip = 'localhost'
-        const msg:MSPeerMessage = {
-            type:'addWorker',
-            peer:`${ip}_${worker.pid}`
-        }
-        console.log(`send ${JSON.stringify(msg)}`)
-        send(msg, ws)
+      let ip = getIpAddress()
+      if (!ip) ip = 'localhost'
+      const msg:MSPeerMessage = {
+          type:'workerAdd',
+          peer:`${ip}_${worker.pid}`
+      }
+      console.log(`send ${JSON.stringify(msg)}`)
+      send(msg, ws)
     }
     ws.onmessage = (ev)=>{
-        const base = JSON.parse(ev.data.toString()) as MSMessage
-        const handler = handlers.get(base.type)
-        if (handler){
-            handler(base, ws)
-        }
+      const text = ev.data.toString()
+      //  console.log(text)
+      const base = JSON.parse(text) as MSMessage
+      console.log(`${base.type} received from ${(base as any).peer}.`)
+      const handler = handlers.get(base.type)
+      if (handler){
+          handler(base, ws)
+      }
     }
-}
+    ws.onerror = (ev)=>{
+      console.log(`ws error ${ev.message}, state:${ws.readyState}`)
+    }
+  }
 
-main()
+  console.log('connecting to main server');
+  setInterval(()=>{
+    if (ws.readyState !== ws.OPEN){
+      console.log('Try to connect to main server.')
+      connectToMain()
+    }
+  }, 1000)
+})
