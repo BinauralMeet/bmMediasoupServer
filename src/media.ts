@@ -202,14 +202,20 @@ startMediasoup().then(({worker, router}) => {
         paused:msg.paused,
         appData: { peer:msg.peer, transportId: transport.id}
       }).then((producer)=>{
-        producer.on('transportclose', () => {
-          console.log('producer\'s transport closed', producer.id);
-          closeProducer(producer);
-        })
-        producers.set(producer.id, producer)
-        sendMsg.producer = producer.id
-        send(sendMsg, ws)
-        updateWorkerLoad()
+        if(producer.type === 'simulcast'){
+          producer.close()
+          console.log(`Simulcast producer ${producer.id} created but closed`)
+        }else{
+          console.log(`${producer.type} producer ${producer.id} created`)
+          producer.on('transportclose', () => {
+            console.log('producer\'s transport closed', producer.id);
+            closeProducer(producer);
+          })
+          producers.set(producer.id, producer)
+          sendMsg.producer = producer.id
+          send(sendMsg, ws)
+          updateWorkerLoad()
+        }
       })
     }
   })
