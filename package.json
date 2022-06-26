@@ -19,6 +19,7 @@
     "ts-node-dev": "^2.0.0"
   },
   "scripts": {
+    "build": "npx tsc",
     "main": "ts-node-dev --respawn src/main.ts",
     "media": "export NODE_TLS_REJECT_UNAUTHORIZED=0;ts-node-dev --respawn src/media.ts",
     "wscat": "export NODE_TLS_REJECT_UNAUTHORIZED=0;wscat -c wss://localhost:3000"
