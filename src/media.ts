@@ -11,11 +11,18 @@ interface FqdnAndIp{
   fqdn: string, ip: string
 }
 
+function getIpAddress() {
+  const nets = os.networkInterfaces();
+  const net = nets["en0"]?.find((v) => v.family == "IPv4");
+  return !!net ? net.address : null;
+}
+
 function getFqdnAndIp(){
   const promise = new Promise<FqdnAndIp>((resolve, reject)=>{
     var h = os.hostname()
+    console.log(`hostname: ${h}`)
     dns.lookup(h, { hints: dns.ADDRCONFIG }, function(err, ip) {
-      //console.log('IP: ' + ip)
+      console.log('IP: ' + ip)
       dns.lookupService(ip, 0, function (err, hostname, service) {
         if (err) {
           console.log(err)
@@ -29,11 +36,6 @@ function getFqdnAndIp(){
     })
   })
   return promise
-}
-function getIpAddress() {
-  const nets = os.networkInterfaces();
-  const net = nets["en0"]?.find((v) => v.family == "IPv4");
-  return !!net ? net.address : null;
 }
 
 const log = debugModule('bmMsE');
