@@ -7,35 +7,17 @@ import * as os from 'os'
 import * as dns from 'dns'
 
 
-interface FqdnAndIp{
-  fqdn: string, ip: string
-}
 
 function getIpAddress() {
   const nets = os.networkInterfaces();
-  const net = nets["en0"]?.find((v) => v.family == "IPv4");
-  return !!net ? net.address : null;
-}
-
-function getFqdnAndIp(){
-  const promise = new Promise<FqdnAndIp>((resolve, reject)=>{
-    var h = os.hostname()
-    console.log(`hostname: ${h}`)
-    dns.lookup(h, { hints: dns.ADDRCONFIG }, function(err, ip) {
-      console.log('IP: ' + ip)
-      dns.lookupService(ip, 0, function (err, hostname, service) {
-        if (err) {
-          console.log(err)
-          reject()
-          return
-        }
-        //console.log('FQDN: ' + hostname)
-        //console.log('Service: ' + service)
-        resolve({fqdn:hostname, ip})
-      })
-    })
-  })
-  return promise
+  console.log(JSON.stringify(nets))
+  for(const key in nets){
+    const net = nets[key]?.find(n => n?.internal===false && n?.family === 'IPv4')
+    if (net){
+      return net.address
+    }
+  }
+  return undefined
 }
 
 const log = debugModule('bmMsE');
@@ -138,12 +120,14 @@ function send(base: MSMessage, ws: websocket.WebSocket){
   ws.send(JSON.stringify(base))
 }
 
-let hostinfo:FqdnAndIp
-//  get host info
-getFqdnAndIp().then(info => {
-  hostinfo = info
-  start()
-})
+const fqdn = os.hostname()
+const hostinfo={
+  fqdn,
+  name:fqdn.substring(0, fqdn.indexOf('.')),
+  ip:getIpAddress()
+}
+console.log(JSON.stringify(hostinfo))
+start()
 
 // start mediasoup
 function start(){
@@ -354,11 +338,11 @@ function start(){
       clearMediasoup()
       ws = new websocket.WebSocket(config.mainServer)
       ws.onopen = (ev) => {
-        let ip = hostinfo.ip
-        if (!ip) ip = 'localhost'
+        let name = hostinfo.name
+        if (!name) name = 'localhost'
         const msg:MSPeerMessage = {
             type:'workerAdd',
-            peer:`${ip}_${worker.pid}`
+            peer:`${name}_${worker.pid}`
         }
         console.log(`send ${JSON.stringify(msg)}`)
         send(msg, ws)
