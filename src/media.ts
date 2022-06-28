@@ -312,7 +312,7 @@ function send(base: MSMessage, ws: websocket.WebSocket){
 
 function getIpAddress() {
   const nets = os.networkInterfaces();
-  console.log(JSON.stringify(nets))
+  //console.log(JSON.stringify(nets))
   for(const key in nets){
     const net = nets[key]?.find(n => n?.internal===false && n?.family === 'IPv4')
     if (net){
