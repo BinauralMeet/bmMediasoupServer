@@ -13,7 +13,7 @@ module.exports = {
   //  for media server
   //  url to main server
   mainServer: "wss://localhost:3100", //  url to the main server
-  //mainServer: "wss://msmain.titech.binaural.me", //  url to the main server
+  //mainServer: "wss://main.titech.binaural.me", //  url to the main server
   mediasoup: {
     worker: {
       rtcMinPort: 40000,
