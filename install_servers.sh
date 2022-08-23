@@ -2,18 +2,23 @@
 #install bmMediasoupServer
 cd /root
 
+rm /etc/apt/sources.list.d/*
 apt update
-apt-get install git
-apt-get install nodejs
-apt-get install npm
-apt-get install python3-pip
+apt remove jitsi-videobridge2
+apt upgrade
+apt-get -y install git
+apt-get -y install nodejs
+apt-get -y install npm
+apt-get -y install python3-pip
 git clone https://github.com/BinauralMeet/bmMediasoupServer.git
 cd bmMediasoupServer
 npm install --global yarn
 yarn
 yarn build
 yarn global add pm2
-pm2 start dist/media.js
+#pm2 start dist/main.js --log-date-format 'MM-DD HH:mm:ss.SSS'
+pm2 start dist/media.js --log-date-format 'MM-DD HH:mm:ss.SSS'
+pm2 save
 ln -s /root/.pm2/logs /var/log/pm2
 
 #install coturn
@@ -27,8 +32,10 @@ chgrp turnserver turnserver.conf
 cd /root
 curl https://binaural.me/public_packages/media/updateCert.sh>updateCert.sh
 chmod 777 updateCert.sh
+./updateCert.sh
 # Give coturn binding permission for ports lower than 1024
 setcap CAP_NET_BIND_SERVICE+ep /usr/bin/turnserver
+/etc/init.d/coturn restart
 
 # https://qiita.com/okyk/items/2d7db6b148a43bc3b405
 # https://lealog.hateblo.jp/entry/2020/03/28/124709

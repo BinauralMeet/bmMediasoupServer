@@ -2,7 +2,7 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSConnectTransportMessage, MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply,
+import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply,
   MSPeerMessage, MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage, MSCreateTransportMessage} from './MediaMessages'
 import { exit } from 'process'
 
@@ -11,6 +11,10 @@ const warn = debugModule('bmMsM:WARN');
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
 
+//  const consoleDebug = console.debug
+const consoleDebug = (... arg:any[]) => {}
+const consoleLog = console.log
+const consoleError = console.log
 
 /*
     main server only for signaling
@@ -22,36 +26,44 @@ const config = require('../config');
     media server 2 has producer2 and consumers
     see https://mediasoup.org/documentation/v3/mediasoup/design/#architecture
  */
-interface Worker{
-  id: string
+interface PingPong {
   ws: websocket.WebSocket
+  interval?: NodeJS.Timeout
+  pongWait: number
+}
+
+interface Worker extends PingPong{
+  id: string
   stat:{
     load: number
   }
 }
 const workers = new Map<string, Worker>()
-
+function deleteWorker(worker: Worker){
+  clearInterval(worker.interval)
+  workers.delete(worker.id)
+}
 function getVacantWorker(){
   if (workers.size){
     const worker = Array.from(workers.values()).reduce((prev, cur)=> prev.stat.load < cur.stat.load ? prev : cur)
-    console.log(`worker ${worker.id} with load ${worker.stat.load} is selected.`)
+    consoleLog(`worker ${worker.id} with load ${worker.stat.load} is selected.`)
     return worker
   }
   return undefined
 }
 
-interface Peer extends MSRemotePeer{
-  ws: websocket.WebSocket
+
+interface Peer extends PingPong, MSRemotePeer{
   room?: Room
   worker?: Worker
   transports:string[]
 }
 function toMSRemotePeer(peer: Peer):MSRemotePeer{
-  const {ws, room, worker, ...ms} = peer
+  const {ws, room, worker, interval, pongWait, ...ms} = peer
   return ms
 }
-
 const peers = new Map<string, Peer>()
+
 interface Room{
   id: string
   peers: Set<Peer>
@@ -82,24 +94,26 @@ function makeUniqueId(id:string, map: Map<string, any>){
 function getPeerAndWorker(id: string){
   const peer = peers.get(id)
   if (!peer) {
-    console.error(`Peer ${id} not found.`)
+    consoleError(`Peer ${id} not found.`)
     exit()
   }
   if (!peer.worker) peer.worker = getVacantWorker()
   return peer
 }
-const handlersForPeer = new Map<MSMessageType, (base:MSMessage, ws:websocket.WebSocket)=>void>()
-const handlersForWorker = new Map<MSMessageType, (base:MSMessage, ws:websocket.WebSocket)=>void>()
+const handlersForPeer = new Map<MSMessageType, (base:MSMessage, peer: Peer)=>void>()
+const handlersForWorker = new Map<MSMessageType, (base:MSMessage, worker: Worker)=>void>()
 
 function getPeer(id: string):Peer{
   const peer = peers.get(id)
   if (!peer){
-    console.error(`peer ${id} not found.`)
-    return {peer:'', producers:[], transports:[], ws:new websocket.WebSocket('')}
+    consoleError(`peer ${id} not found.`)
+    return {peer:'', producers:[], transports:[], ws:new websocket.WebSocket(''), pongWait:0}
   }
   return peer
 }
 function deletePeer(peer: Peer){
+  clearInterval(peer.interval)
+
   //   delete from room
   peer.room?.peers.delete(peer)
   checkDeleteRoom(peer.room)
@@ -123,7 +137,7 @@ function deletePeer(peer: Peer){
   remoteLeft([peer.peer], peer.room!)
   peers.delete(peer.peer)
   const peerList = Array.from(peers.keys()).reduce((prev, cur) => `${prev} ${cur}`, '')
-  console.log(`Peers: ${peerList}`)
+  consoleDebug(`Peers: ${peerList}`)
 }
 function checkDeleteRoom(room?: Room){
   if (room && room.peers.size === 0){
@@ -131,53 +145,9 @@ function checkDeleteRoom(room?: Room){
   }
 }
 
-handlersForPeer.set('connect',(base, ws)=>{
-  const msg = base as MSPeerMessage
-  const unique = makeUniqueId(msg.peer, peers)
-  msg.peer = unique
-  send(msg, ws)
-  peers.set(unique, {peer:unique, ws, producers:[], transports:[]})
-  console.log(`${unique} connected: ${JSON.stringify(Array.from(peers.keys()))}`)
-})
-handlersForPeer.set('join',(base, ws)=>{
-  const msg = base as MSPeerMessage
-  const peer = getPeer(msg.peer)
-  const join = base as MSRoomMessage
-  let room = rooms.get(join.room)
-  console.log(`${peer.peer} joined to room ${join.room}`)
-  if (room) {
-    room.peers.add(peer)
-  }else{
-    room = {id:join.room, peers:new Set<Peer>([peer])}
-    rooms.set(room.id, room)
-    console.log(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`)
-  }
-  peer.room = room
-  //  notify the room's remotes
-  const remoteUpdateMsg:MSRemoteUpdateMessage = {
-    type:'remoteUpdate',
-    remotes: Array.from(peer.room.peers).map(peer => toMSRemotePeer(peer))
-  }
-  send(remoteUpdateMsg, ws)
-})
-handlersForPeer.set('leave',(base)=>{
-  const msg = base as MSPeerMessage
-  const peer = peers.get(msg.peer)
-  if (peer){
-    deletePeer(peer)
-  }
-})
-handlersForPeer.set('workerAdd',(base, ws)=>{
-  const msg = base as MSPeerMessage
-  const unique = makeUniqueId(msg.peer, workers)
-  msg.peer = unique
-  send(msg, ws)
-  const {type, peer, ...msg_minus} = msg
-  workers.set(msg.peer, {...msg_minus, id:msg.peer, ws, stat:{load:0}})
-  ws.removeEventListener('message', onWsMessagePeer)
-  ws.addEventListener('message', onWsMessageWorker)
-  console.log(`addWorker ${msg.peer}`)
-})
+
+//-------------------------------------------------------
+//  handlers for worker
 handlersForWorker.set('workerDelete',(base, ws)=>{
   const msg = base as MSPeerMessage
   workers.delete(msg.peer)
@@ -194,7 +164,7 @@ function relayPeerToWorker(base: MSMessage){
   const msg = base as MSPeerMessage
   const remoteOrpeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
   if (remoteOrpeer.worker){
-    console.log(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrpeer.worker.id}`)
+    consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrpeer.worker.id}`)
     const {remote, ...msg_} = msg
     send(msg_, remoteOrpeer.worker.ws)
   }
@@ -203,10 +173,42 @@ function relayWorkerToPeer(base: MSMessage){
   const msg = base as MSPeerMessage
   const peer = peers.get(msg.peer)
   if (peer){
-    console.log(`W=>P ${msg.type} from ${peer.worker?.id} relayed to ${peer.peer}`)
+    consoleDebug(`W=>P ${msg.type} from ${peer.worker?.id} relayed to ${peer.peer}`)
     send(msg, peer.ws)
   }
 }
+
+
+//-------------------------------------------------------
+//  handlers for peer
+handlersForPeer.set('join',(base, peer)=>{
+  const msg = base as MSPeerMessage
+  const join = base as MSRoomMessage
+  let room = rooms.get(join.room)
+  if (room) {
+    room.peers.add(peer)
+  }else{
+    room = {id:join.room, peers:new Set<Peer>([peer])}
+    rooms.set(room.id, room)
+    consoleLog(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`)
+  }
+  peer.room = room
+  consoleLog(`${peer.peer} joined to room ${join.room} ${JSON.stringify(Array.from(room.peers.keys()).map(p=>p.peer))}`)
+
+  //  Notify (reply) the room's remotes
+  const remoteUpdateMsg:MSRemoteUpdateMessage = {
+    type:'remoteUpdate',
+    remotes: Array.from(peer.room.peers).map(peer => toMSRemotePeer(peer))
+  }
+  send(remoteUpdateMsg, peer.ws)
+})
+handlersForPeer.set('leave', (_base, peer)=>{
+  peer.ws.close()
+  deletePeer(peer)
+  consoleLog(`${peer.peer} left from room ${peer.room?.id} ${peer.room ?
+     JSON.stringify(Array.from(peer.room.peers.keys()).map(p=>p.peer)):'[]'}`)
+})
+
 function setRelayHandlers(mt: MSMessageType){
   handlersForPeer.set(mt, relayPeerToWorker)
   handlersForWorker.set(mt, relayWorkerToPeer)
@@ -240,12 +242,12 @@ function remoteLeft(ps: string[], room:Room){
 setRelayHandlers('connectTransport')
 
 handlersForPeer.set('produceTransport', relayPeerToWorker)
-handlersForWorker.set('produceTransport', (base, ws)=>{
+handlersForWorker.set('produceTransport', (base)=>{
   const msg = base as MSProduceTransportReply
   const peer = getPeer(msg.peer)
   if (msg.producer){
     if (peer.producers.find(p => p.role === msg.role && p.kind === msg.kind)){
-      console.error(`A producer for the same role ${msg.role} and kind ${msg.kind} already exists.`)
+      consoleError(`A producer for the same role ${msg.role} and kind ${msg.kind} already exists.`)
     }
     peer.producers.push({id:msg.producer, kind: msg.kind, role: msg.role})
   }
@@ -257,7 +259,7 @@ handlersForPeer.set('closeProducer', (base)=>{
   const peer = peers.get(msg.peer)
   if (peer){
     peer.producers = peer.producers.filter(pr => pr.id !== msg.producer)
-    console.log(`Close producer ${msg.producer}` +
+    consoleDebug(`Close producer ${msg.producer}` +
       `remains:[${peer.producers.map(rp => rp.id).reduce((prev, cur)=>`${prev} ${cur}`, '')}]`)
     remoteUpdated([peer], peer.room!)
   }
@@ -269,34 +271,90 @@ setRelayHandlers('consumeTransport')
 setRelayHandlers('resumeConsumer')
 
 
-function onWsMessagePeer(messageData: websocket.MessageEvent){
-  const ws = messageData.target
-  const base = JSON.parse(messageData.data.toString()) as MSMessage
-  console.log(`PeerMsg ${base.type} from ${(base as any).peer}`)
-  const handler = handlersForPeer.get(base.type)
-  if (handler){
-    handler(base, ws)
-  }else{
-    const msg = base as MSPeerMessage
-    console.log(`Unhandle peer message ${msg.type} received from ${msg.peer}`)
-  }
+//  Websocket message handlers
+function addCommonListner(pingPong: PingPong){
+  pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
+  pingPong.ws.on('pong', (ev) =>{
+    pingPong.pongWait --
+    consoleDebug(`pong ${pingPong.pongWait}`)
+  })
+  pingPong.interval = setInterval(()=>{
+    if (pingPong.pongWait){
+      const id = (pingPong as Worker).id || (pingPong as Peer).peer
+      console.warn(`WS for '${id}' timed out. pong wait count = ${pingPong.pongWait}.`)
+      pingPong.ws.close()
+      clearInterval(pingPong.interval)
+      return
+    }
+    pingPong.ws.ping()
+    pingPong.pongWait ++
+  }, 20 * 1000)
 }
-function onWsMessageWorker(messageData: websocket.MessageEvent){
+function addPeerListener(peer: Peer){
+  addCommonListner(peer)
+  peer.ws.addEventListener('close', () =>{
+    consoleDebug(`WS for peer ${peer.peer} closed.`)
+    deletePeer(peer)
+  })
+  peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
+    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    const handler = handlersForPeer.get(msg.type)
+    if (handler){
+      handler(msg, peer)
+    }else{
+      console.warn(`Unhandle peer message ${msg.type} received from ${msg.peer}`)
+    }
+  })
+}
+function addWorkerListener(worker: Worker){
+  addCommonListner(worker)
+  worker.ws.addEventListener('close', () =>{
+    consoleDebug(`WS for worker ${worker.id} closed.`)
+    deleteWorker(worker)
+  })
+  worker.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
+    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    const handler = handlersForWorker.get(msg.type)
+    if (handler){
+      handler(msg, worker)
+    }else{
+      console.warn(`Unhandle workder message ${msg.type} received from ${msg.peer}`)
+    }
+  })
+}
+
+function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
-  const base = JSON.parse(messageData.data.toString()) as MSMessage
-  console.log(`WorkerMsg ${base.type} to ${(base as any).peer}`)
-  const handler = handlersForWorker.get(base.type)
-  if (handler){
-    handler(base, ws)
+  const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+  consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
+  if (msg.type === 'connect'){
+    const unique = makeUniqueId(msg.peer, peers)
+    msg.peer = unique
+    send(msg, ws)
+    //  create peer
+    const peer:Peer = {peer:unique, ws, producers:[], transports:[], pongWait:0}
+    peers.set(unique, peer)
+    ws.removeEventListener('message', onFirstMessage)
+    addPeerListener(peer)
+    consoleDebug(`${unique} connected: ${JSON.stringify(Array.from(peers.keys()))}`)
+  }else if (msg.type === 'workerAdd'){
+    const unique = makeUniqueId(msg.peer, workers)
+    msg.peer = unique
+    send(msg, ws)
+    const {type, peer, ...msg_} = msg
+    const worker:Worker = {...msg_, id:msg.peer, ws, stat:{load:0}, pongWait: 0}
+    workers.set(msg.peer, worker)
+    consoleLog(`addWorker ${msg.peer}`)
+    ws.removeEventListener('message', onFirstMessage)
+    addWorkerListener(worker)
   }else{
-    const msg = base as MSPeerMessage
-    console.log(`Unhandle worker message ${msg.type} received from ${msg.peer}`)
+    console.warn(`invalid first message ${msg.type} received from ${msg.peer}.`)
   }
 }
 
 async function main() {
   // start https server
-  console.log('starting wss server');
+  consoleLog('starting wss server');
   try {
     const tls = {
       cert: fs.readFileSync(config.sslCrt),
@@ -304,32 +362,26 @@ async function main() {
     };
     const httpsServer = https.createServer(tls);
     httpsServer.on('error', (e) => {
-      console.error('https server error,', e.message);
+      consoleError('https server error,', e.message);
     });
 
     const wss = new websocket.Server({server: httpsServer})
     wss.on('connection', ws => {
-      console.log(`onConnection() `)
-      ws.addEventListener('message', onWsMessagePeer)
-      ws.addEventListener('close', (ev) =>{
-        const peer = Array.from(peers.values()).find(p => p.ws === ws)
-        if (peer){
-          deletePeer(peer)
-        }
-      })
+      consoleDebug(`onConnection() `)
+      ws.addEventListener('message', onFirstMessage)
     })
 
     await new Promise<void>((resolve) => {
       httpsServer.listen(config.httpPort, config.httpIp, () => {
-        console.log(`server is running and listening on ` +
+        consoleLog(`server is running and listening on ` +
                     `https://${config.httpIp}:${config.httpPort}`);
         resolve();
       });
     });
   } catch (e :any) {
     if (e.code === 'ENOENT') {
-      console.error('no certificates found (check config.js)');
-      console.error('  could not start https server ... trying http');
+      consoleError('no certificates found (check config.js)');
+      consoleError('  could not start https server ... trying http');
     } else {
       err('could not start https server', e);
     }

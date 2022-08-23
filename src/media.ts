@@ -10,6 +10,11 @@ const warn = debugModule('bmMsE:WARN');
 const err = debugModule('bmMsE:ERROR');
 const config = require('../config');
 
+//  const consoleDebug = console.debug
+const consoleDebug = (... arg:any[]) => {}
+const consoleLog = console.log
+const consoleError = console.log
+
 let ws = new websocket.WebSocket(null)
 let workerId = ''
 let workerLoad = 0
@@ -26,13 +31,13 @@ const hostinfo={
 }
 
 // start mediasoup
-console.log('starting mediasoup')
+consoleLog('starting mediasoup')
 startMediasoup().then(({worker, router}) => {
   //  set message handlers
   handlers.set('workerAdd',(base)=>{
     const msg = base as MSPeerMessage
     workerId = msg.peer
-    console.log(`workerId: ${workerId}`)
+    consoleLog(`workerId: ${workerId}`)
   })
 
   handlers.set('rtpCapabilities',(base, ws)=>{
@@ -105,7 +110,7 @@ startMediasoup().then(({worker, router}) => {
       const msg = base as MSConnectTransportMessage
       const transport = transports.get(msg.transport)
       if (!transport) {
-        console.error(`connect-transport: server-side transport ${msg.transport} not found`)
+        consoleError(`connect-transport: server-side transport ${msg.transport} not found`)
         sendMsg.error = `server-side transport ${msg.transport} not found`
         send(sendMsg, ws)
       }else{
@@ -114,7 +119,7 @@ startMediasoup().then(({worker, router}) => {
         })
       }
     } catch (e) {
-      console.error('error in /signaling/connect-transport', e);
+      consoleError('error in /signaling/connect-transport', e);
       sendMsg.error = `${e}`
       send(sendMsg, ws)
     }
@@ -126,7 +131,7 @@ startMediasoup().then(({worker, router}) => {
     const sendMsg:MSProduceTransportReply = msg_
     const transport = transports.get(msg.transport)
     if (!transport) {
-      console.error(`produce-transport: server-side transport ${msg.transport} not found`)
+      consoleError(`produce-transport: server-side transport ${msg.transport} not found`)
       sendMsg.error = `server-side transport ${msg.transport} not found`
       send(sendMsg, ws)
     }else{
@@ -138,11 +143,11 @@ startMediasoup().then(({worker, router}) => {
       }).then((producer)=>{
         if(producer.type === 'simulcast'){
           producer.close()
-          console.log(`Simulcast producer ${producer.id} created but closed`)
+          consoleLog(`Simulcast producer ${producer.id} created but closed`)
         }else{
-          console.log(`${producer.type} producer ${producer.id} created`)
+          consoleDebug(`${producer.type} producer ${producer.id} created`)
           producer.on('transportclose', () => {
-            console.log('producer\'s transport closed', producer.id);
+            consoleDebug('producer\'s transport closed', producer.id);
             closeProducer(producer);
           })
           producers.set(producer.id, producer)
@@ -176,7 +181,7 @@ startMediasoup().then(({worker, router}) => {
     const sendMsg:MSConsumeTransportReply = {...msg_}
     const transport = transports.get(msg.transport)
     if (!transport) {
-      console.error(`consume-transport: server-side transport ${msg.transport} not found`)
+      consoleError(`consume-transport: server-side transport ${msg.transport} not found`)
       sendMsg.error = `server-side transport ${msg.transport} not found`
       send(sendMsg, ws)
     }else{
@@ -200,7 +205,7 @@ startMediasoup().then(({worker, router}) => {
         sendMsg.kind = consumer.kind
         send(sendMsg, ws)
       }).catch((e)=>{
-        console.error(`consume-transport: for producer ${msg.producer} failed`)
+        consoleError(`consume-transport: for producer ${msg.producer} failed`)
         sendMsg.error = `consume for ${msg.producer} failed`
         send(sendMsg, ws)
       })
@@ -216,7 +221,7 @@ startMediasoup().then(({worker, router}) => {
     }
     if (consumerObject){
       consumerObject.resume().then(()=>{
-        console.log(`consumer.resume() for ${consumer} succeed.`)
+        consoleDebug(`consumer.resume() for ${consumer} succeed.`)
         send(reply, ws)
       }).catch(()=>{
         reply.error = `consumer.resume() for ${consumer} failed.`
@@ -239,28 +244,28 @@ startMediasoup().then(({worker, router}) => {
           type:'workerAdd',
           peer:`${name}_${worker.pid}`
       }
-      console.log(`send ${JSON.stringify(msg)}`)
+      consoleDebug(`send ${JSON.stringify(msg)}`)
       send(msg, ws)
     }
     ws.onmessage = (ev)=>{
       const text = ev.data.toString()
-      //  console.log(text)
+      //  consoleLog(text)
       const base = JSON.parse(text) as MSMessage
-      console.log(`${base.type} received from ${(base as any).peer}.`)
+      consoleDebug(`${base.type} received from ${(base as any).peer}.`)
       const handler = handlers.get(base.type)
       if (handler){
           handler(base, ws)
       }
     }
     ws.onerror = (ev)=>{
-      console.log(`ws error ${ev.message}, state:${ws.readyState}`)
+      consoleLog(`ws error ${ev.message}, state:${ws.readyState}`)
     }
   }
 
-  console.log('connecting to main server');
+  consoleLog('connecting to main server');
   setInterval(()=>{
     if (ws.readyState !== ws.OPEN){
-      console.log('Try to connect to main server.')
+      consoleLog('Try to connect to main server.')
       connectToMain()
     }
   }, 5000)
@@ -290,7 +295,7 @@ function clearMediasoup(){
 }
 
 function closeProducer(producer:mediasoup.types.Producer) {
-  console.log('closing producer', producer.id, producer.appData);
+  consoleDebug('closing producer', producer.id, producer.appData);
   try {
     producer.close()
     // remove this producer from our list
@@ -301,7 +306,7 @@ function closeProducer(producer:mediasoup.types.Producer) {
   updateWorkerLoad()
 }
 function closeConsumer(consumer: mediasoup.types.Consumer) {
-  console.log('closing consumer', consumer.id, consumer.appData);
+  consoleDebug('closing consumer', consumer.id, consumer.appData);
   consumers.delete(consumer.id)
   consumer.close();
 }
@@ -312,7 +317,7 @@ function send(base: MSMessage, ws: websocket.WebSocket){
 
 function getIpAddress() {
   const nets = os.networkInterfaces();
-  //console.log(JSON.stringify(nets))
+  //consoleLog(JSON.stringify(nets))
   for(const key in nets){
     const net = nets[key]?.find(n => n?.internal===false && n?.family === 'IPv4')
     if (net){
@@ -330,7 +335,7 @@ async function startMediasoup() {
   });
 
   worker.on('died', () => {
-    console.error('mediasoup worker died (this should never happen)');
+    consoleError('mediasoup worker died (this should never happen)');
     process.exit(1);
   });
 
