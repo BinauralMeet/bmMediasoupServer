@@ -1,5 +1,5 @@
 import * as mediasoup from 'mediasoup'
-export type MSMessageType = 'connect' | 'join' | 'rtpCapabilities' | 'leave' |
+export type MSMessageType = 'connect' | 'join' | 'ping' | 'rtpCapabilities' | 'leave' |
   'remoteUpdate' | 'remoteLeft' |
   'workerAdd' | 'workerDelete' | 'workerUpdate' |
   'createTransport' | 'closeTransport' | 'connectTransport' |

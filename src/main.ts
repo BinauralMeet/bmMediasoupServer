@@ -181,6 +181,10 @@ function relayWorkerToPeer(base: MSMessage){
 
 //-------------------------------------------------------
 //  handlers for peer
+handlersForPeer.set('ping', (msg, peer)=>{
+  send(msg, peer.ws)
+})
+
 handlersForPeer.set('join',(base, peer)=>{
   const msg = base as MSPeerMessage
   const join = base as MSRoomMessage
