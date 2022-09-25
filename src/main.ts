@@ -333,15 +333,16 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
   if (msg.type === 'connect'){
-    if (msg.peerJustBefore) {
-      const justBefore = peers.get(msg.peerJustBefore)
-      if (justBefore){
-        deletePeer(justBefore)
-        consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
-          `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
-      }
+    let unique = ''
+    let justBefore
+    if (msg.peerJustBefore && (justBefore = peers.get(msg.peerJustBefore))) {
+      deletePeer(justBefore)
+      consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
+        `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
+      unique = makeUniqueId(justBefore.peer, peers)
+    }else{
+      unique = makeUniqueId(msg.peer, peers)
     }
-    const unique = makeUniqueId(msg.peer, peers)
     msg.peer = unique
     send(msg, ws)
     //  create peer
