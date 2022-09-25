@@ -2,8 +2,9 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply,
-  MSPeerMessage, MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage, MSCreateTransportMessage} from './MediaMessages'
+import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply, MSPeerMessage,
+  MSConnectMessage, MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage,
+  MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaMessages'
 import { exit } from 'process'
 
 const log = debugModule('bmMsM');
@@ -329,9 +330,17 @@ function addWorkerListener(worker: Worker){
 
 function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
-  const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+  const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
   if (msg.type === 'connect'){
+    if (msg.peerJustBefore) {
+      const justBefore = peers.get(msg.peerJustBefore)
+      if (justBefore){
+        deletePeer(justBefore)
+        consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
+          `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
+      }
+    }
     const unique = makeUniqueId(msg.peer, peers)
     msg.peer = unique
     send(msg, ws)
