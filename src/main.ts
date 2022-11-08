@@ -75,8 +75,10 @@ function send<MSM extends MSMessage>(msg: MSM, ws: websocket.WebSocket){
   ws.send(JSON.stringify(msg))
 }
 function sendRoom<MSM extends MSMessage>(msg: MSM, room:Room){
-  for(const peer of room.peers?.values()){
-    peer.ws.send(JSON.stringify(msg))
+  if (room?.peers){
+    for(const peer of room.peers.values()){
+      peer.ws.send(JSON.stringify(msg))
+    }
   }
 }
 
