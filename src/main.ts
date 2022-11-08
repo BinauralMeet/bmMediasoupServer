@@ -75,7 +75,7 @@ function send<MSM extends MSMessage>(msg: MSM, ws: websocket.WebSocket){
   ws.send(JSON.stringify(msg))
 }
 function sendRoom<MSM extends MSMessage>(msg: MSM, room:Room){
-  for(const peer of room.peers.values()){
+  for(const peer of room.peers?.values()){
     peer.ws.send(JSON.stringify(msg))
   }
 }
@@ -190,7 +190,7 @@ handlersForPeer.set('join',(base, peer)=>{
   const msg = base as MSPeerMessage
   const join = base as MSRoomMessage
   let room = rooms.get(join.room)
-  if (room) {
+  if (room?.peers) {
     room.peers.add(peer)
   }else{
     room = {id:join.room, peers:new Set<Peer>([peer])}
