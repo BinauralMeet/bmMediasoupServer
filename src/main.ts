@@ -128,7 +128,9 @@ function deletePeer(peer: Peer){
       peer: peer.peer,
       producer: producer.id,
     }
-    send(msg, peer.worker!.ws)
+    if (peer.worker?.ws){
+      send(msg, peer.worker.ws)
+    }
   })
   peer.transports.forEach(transport => {
     const msg: MSCloseTransportMessage= {
