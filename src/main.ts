@@ -258,9 +258,9 @@ handlersForWorker.set('produceTransport', (base)=>{
   const peer = getPeer(msg.peer)
   if (msg.producer){
     if (peer.producers.find(p => p.role === msg.role && p.kind === msg.kind)){
-      consoleError(`A producer for the same role ${msg.role} and kind ${msg.kind} already exists for peer ${peer.peer}.`)
+      consoleError(`A producer for the same role "${msg.role}" and kind "${msg.kind}" already exists for peer "${peer.peer}".`)
     }else{
-      consoleLog(`new producer, role ${msg.role} and kind ${msg.kind} created.`)
+      consoleDebug(`new producer, role "${msg.role}" and kind "${msg.kind}" created for peer "${peer.peer}".`)
     }
     peer.producers.push({id:msg.producer, kind: msg.kind, role: msg.role})
   }
