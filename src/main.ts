@@ -12,8 +12,8 @@ const warn = debugModule('bmMsM:WARN');
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
 
-//  const consoleDebug = console.debug
-const consoleDebug = (... arg:any[]) => {}
+const CONSOLE_DEBUG = false
+const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
 
@@ -141,8 +141,10 @@ function deletePeer(peer: Peer){
   })
   remoteLeft([peer.peer], peer.room!)
   peers.delete(peer.peer)
-  const peerList = Array.from(peers.keys()).reduce((prev, cur) => `${prev} ${cur}`, '')
-  consoleDebug(`Peers: ${peerList}`)
+  if (CONSOLE_DEBUG){
+    const peerList = Array.from(peers.keys()).reduce((prev, cur) => `${prev} ${cur}`, '')
+    consoleDebug(`Peers: ${peerList}`)
+  }
 }
 function checkDeleteRoom(room?: Room){
   if (room && room.peers.size === 0){
@@ -257,6 +259,8 @@ handlersForWorker.set('produceTransport', (base)=>{
   if (msg.producer){
     if (peer.producers.find(p => p.role === msg.role && p.kind === msg.kind)){
       consoleError(`A producer for the same role ${msg.role} and kind ${msg.kind} already exists for peer ${peer.peer}.`)
+    }else{
+      consoleLog(`new producer, role ${msg.role} and kind ${msg.kind} created.`)
     }
     peer.producers.push({id:msg.producer, kind: msg.kind, role: msg.role})
   }
