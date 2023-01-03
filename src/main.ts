@@ -167,11 +167,11 @@ handlersForWorker.set('workerUpdate',(base, ws)=>{
 
 function relayPeerToWorker(base: MSMessage){
   const msg = base as MSPeerMessage
-  const remoteOrpeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
-  if (remoteOrpeer.worker){
-    consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrpeer.worker.id}`)
+  const remoteOrPeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
+  if (remoteOrPeer.worker){
+    consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrPeer.worker.id}`)
     const {remote, ...msg_} = msg
-    send(msg_, remoteOrpeer.worker.ws)
+    send(msg_, remoteOrPeer.worker.ws)
   }
 }
 function relayWorkerToPeer(base: MSMessage){
@@ -256,7 +256,7 @@ handlersForWorker.set('produceTransport', (base)=>{
   const peer = getPeer(msg.peer)
   if (msg.producer){
     if (peer.producers.find(p => p.role === msg.role && p.kind === msg.kind)){
-      consoleError(`A producer for the same role ${msg.role} and kind ${msg.kind} already exists.`)
+      consoleError(`A producer for the same role ${msg.role} and kind ${msg.kind} already exists for peer ${peer.peer}.`)
     }
     peer.producers.push({id:msg.producer, kind: msg.kind, role: msg.role})
   }
