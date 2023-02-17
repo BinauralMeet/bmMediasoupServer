@@ -33,6 +33,7 @@ interface PingPong {
   pongWait: number
 }
 
+
 interface Worker extends PingPong{
   id: string
   stat:{
@@ -65,11 +66,18 @@ function toMSRemotePeer(peer: Peer):MSRemotePeer{
 }
 const peers = new Map<string, Peer>()
 
+
 interface Room{
   id: string
   peers: Set<Peer>
 }
 const rooms = new Map<string, Room>()
+function checkDeleteRoom(room?: Room){
+  if (room && room.peers.size === 0){
+    rooms.delete(room.id)
+  }
+}
+
 
 function send<MSM extends MSMessage>(msg: MSM, ws: websocket.WebSocket){
   ws.send(JSON.stringify(msg))
@@ -103,9 +111,6 @@ function getPeerAndWorker(id: string){
   if (!peer.worker) peer.worker = getVacantWorker()
   return peer
 }
-const handlersForPeer = new Map<MSMessageType, (base:MSMessage, peer: Peer)=>void>()
-const handlersForWorker = new Map<MSMessageType, (base:MSMessage, worker: Worker)=>void>()
-
 function getPeer(id: string):Peer{
   const peer = peers.get(id)
   if (!peer){
@@ -146,15 +151,26 @@ function deletePeer(peer: Peer){
     consoleDebug(`Peers: ${peerList}`)
   }
 }
-function checkDeleteRoom(room?: Room){
-  if (room && room.peers.size === 0){
-    rooms.delete(room.id)
+function remoteUpdated(ps: Peer[], room: Room){
+  if (!ps.length) return
+  const remoteUpdateMsg:MSRemoteUpdateMessage = {
+    type:'remoteUpdate',
+    remotes: ps.map(p=>toMSRemotePeer(p))
   }
+  sendRoom(remoteUpdateMsg, room)
 }
-
+function remoteLeft(ps: string[], room:Room){
+  if (!ps.length) return
+  const remoteLeftMsg:MSRemoteLeftMessage = {
+    type:'remoteLeft',
+    remotes: ps
+  }
+  sendRoom(remoteLeftMsg, room)
+}
 
 //-------------------------------------------------------
 //  handlers for worker
+const handlersForWorker = new Map<MSMessageType, (base:MSMessage, worker: Worker)=>void>()
 handlersForWorker.set('workerDelete',(base, ws)=>{
   const msg = base as MSPeerMessage
   workers.delete(msg.peer)
@@ -167,27 +183,11 @@ handlersForWorker.set('workerUpdate',(base, ws)=>{
   }
 })
 
-function relayPeerToWorker(base: MSMessage){
-  const msg = base as MSPeerMessage
-  const remoteOrPeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
-  if (remoteOrPeer.worker){
-    consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrPeer.worker.id}`)
-    const {remote, ...msg_} = msg
-    send(msg_, remoteOrPeer.worker.ws)
-  }
-}
-function relayWorkerToPeer(base: MSMessage){
-  const msg = base as MSPeerMessage
-  const peer = peers.get(msg.peer)
-  if (peer){
-    consoleDebug(`W=>P ${msg.type} from ${peer.worker?.id} relayed to ${peer.peer}`)
-    send(msg, peer.ws)
-  }
-}
 
 
 //-------------------------------------------------------
 //  handlers for peer
+const handlersForPeer = new Map<MSMessageType, (base:MSMessage, peer: Peer)=>void>()
 handlersForPeer.set('ping', (msg, peer)=>{
   send(msg, peer.ws)
 })
@@ -220,10 +220,34 @@ handlersForPeer.set('leave', (_base, peer)=>{
      JSON.stringify(Array.from(peer.room.peers.keys()).map(p=>p.peer)):'[]'}`)
 })
 
+
+
+//-------------------------------------------------------
+//  bridging(peer->worker / worker->peer) handlers
+function relayPeerToWorker(base: MSMessage){
+  const msg = base as MSPeerMessage
+  const remoteOrPeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
+  if (remoteOrPeer.worker){
+    consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrPeer.worker.id}`)
+    const {remote, ...msg_} = msg
+    send(msg_, remoteOrPeer.worker.ws)
+  }
+}
+function relayWorkerToPeer(base: MSMessage){
+  const msg = base as MSPeerMessage
+  const peer = peers.get(msg.peer)
+  if (peer){
+    consoleDebug(`W=>P ${msg.type} from ${peer.worker?.id} relayed to ${peer.peer}`)
+    send(msg, peer.ws)
+  }
+}
 function setRelayHandlers(mt: MSMessageType){
   handlersForPeer.set(mt, relayPeerToWorker)
   handlersForWorker.set(mt, relayWorkerToPeer)
 }
+
+//-------------------------------------------------------
+//  handlers for both
 setRelayHandlers('rtpCapabilities')
 handlersForPeer.set('createTransport', relayPeerToWorker)
 handlersForWorker.set('createTransport', (base)=>{
@@ -233,22 +257,6 @@ handlersForWorker.set('createTransport', (base)=>{
   send(base, peer.ws)
 })
 
-function remoteUpdated(ps: Peer[], room: Room){
-  if (!ps.length) return
-  const remoteUpdateMsg:MSRemoteUpdateMessage = {
-    type:'remoteUpdate',
-    remotes: ps.map(p=>toMSRemotePeer(p))
-  }
-  sendRoom(remoteUpdateMsg, room)
-}
-function remoteLeft(ps: string[], room:Room){
-  if (!ps.length) return
-  const remoteLeftMsg:MSRemoteLeftMessage = {
-    type:'remoteLeft',
-    remotes: ps
-  }
-  sendRoom(remoteLeftMsg, room)
-}
 
 setRelayHandlers('connectTransport')
 
@@ -284,6 +292,7 @@ setRelayHandlers('consumeTransport')
 setRelayHandlers('resumeConsumer')
 
 
+//--------------------------------------------------
 //  Websocket message handlers
 function addCommonListner(pingPong: PingPong){
   pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
@@ -336,6 +345,7 @@ function addWorkerListener(worker: Worker){
   })
 }
 
+//  After connection, this handler judge kind of the websocket and add appropriate handlers.
 function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
@@ -374,7 +384,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   }
 }
 
-async function main() {
+function main() {
   // start https server
   consoleLog('starting wss server');
   try {
@@ -393,13 +403,13 @@ async function main() {
       ws.addEventListener('message', onFirstMessage)
     })
 
-    await new Promise<void>((resolve) => {
+    return new Promise<void>((resolve) => {
       httpsServer.listen(config.httpPort, config.httpIp, () => {
         consoleLog(`server is running and listening on ` +
                     `https://${config.httpIp}:${config.httpPort}`);
         resolve();
       });
-    });
+    })
   } catch (e :any) {
     if (e.code === 'ENOENT') {
       consoleError('no certificates found (check config.js)');
