@@ -83,13 +83,11 @@ startMediasoup().then(({worker, router}) => {
             urls: `turn:${hostinfo.fqdn}`,
             username: 'binauralmeet',
             credential: 'binauralmeet_mediasoup_server',
-            credentialType:'password'
           },
           {
             urls: `turns:${hostinfo.fqdn}:443`,
             username: 'binauralmeet',
             credential: 'binauralmeet_mediasoup_server',
-            credentialType:'password'
           },
         ]
       }
