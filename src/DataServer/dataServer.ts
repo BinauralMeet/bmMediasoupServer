@@ -321,6 +321,7 @@ setInterval(()=>{
 }, CONNECTION_CHECK_INTERVAL)
 
 export function addDataListener(ws: websocket.WebSocket){
+  console.log(`addDataListener called ${ws.url}`)
   ws.addEventListener('message', (ev: websocket.MessageEvent) => {
     const msgs = JSON.parse(ev.data.toString()) as Message[]
     for(const msg of msgs){

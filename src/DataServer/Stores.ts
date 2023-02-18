@@ -132,7 +132,7 @@ export class ParticipantStore {
 
   sendMessages(){ //  Client wait response of the server. Server must always send packet.
     try{
-      if (this.socket.readyState === WebSocket.OPEN){
+      if (this.socket.readyState === websocket.OPEN){
         this.socket.send(JSON.stringify(this.messagesTo))
         //.catch(reason => {
         //  console.error(`this.socket.send() failed by reason=${reason}`)
@@ -294,7 +294,6 @@ export class Rooms{
   }
 }
 export const rooms = new Rooms();
-(window as any).rooms = rooms
 
 type MessageHandler = (msg: Message, participant: ParticipantStore, room: RoomStore) => void
 export const messageHandlers = new Map<string, MessageHandler>()
