@@ -2,8 +2,9 @@ import websocket from 'ws'
 import * as mediasoup from 'mediasoup'
 import debugModule from 'debug'
 import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportReply, MSRTPCapabilitiesReply,
-   MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage, MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage, MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage} from './MediaMessages'
+   MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage, MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage, MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage, MSStartStreamingMessage} from './MediaMessages'
 import * as os from 'os'
+import {streamingStart, streamingStop} from './mediaServer/streaming'
 
 const log = debugModule('bmMsE');
 const warn = debugModule('bmMsE:WARN');
@@ -19,7 +20,7 @@ let ws = new websocket.WebSocket(null)
 let workerId = ''
 let workerLoad = 0
 const transports = new Map<string, mediasoup.types.Transport>()
-const producers = new Map<string, mediasoup.types.Producer>()
+export const producers = new Map<string, mediasoup.types.Producer>()
 const consumers = new Map<string, mediasoup.types.Consumer>()
 const handlers = new Map<MSMessageType, (base:MSMessage, ws:websocket.WebSocket)=>void>()
 
@@ -229,6 +230,16 @@ startMediasoup().then(({worker, router}) => {
       reply.error = `consumer ${consumer} not found.`
       send(reply, ws)
     }
+  })
+
+  //  handler for streaming
+  handlers.set('streamingStart',(base, ws)=>{
+    const msg = base as MSStartStreamingMessage
+    streamingStart(router, msg)
+  })
+  handlers.set('streamingStop',(base, ws)=>{
+    const msg = base as MSStartStreamingMessage
+    streamingStop(router, msg)
   })
 
   //  function defines which use worker etc.

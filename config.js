@@ -1,3 +1,5 @@
+const announcedIp='vrc.jp'
+
 module.exports = {
   //----------------------------------------------------------
   //  for main server
@@ -85,5 +87,11 @@ module.exports = {
       ],
       initialAvailableOutgoingBitrate: 800000,
     },
+
+    plainTransport: {
+      listenIp: { ip: '0.0.0.0', announcedIp}, // TODO: Change announcedIp to your external IP or domain name
+      rtcpMux: true,
+      comedia: false
+    }
   },
 };
