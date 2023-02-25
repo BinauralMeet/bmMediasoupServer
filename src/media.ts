@@ -2,9 +2,12 @@ import websocket from 'ws'
 import * as mediasoup from 'mediasoup'
 import debugModule from 'debug'
 import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportReply, MSRTPCapabilitiesReply,
-   MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage, MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage, MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage, MSStartStreamingMessage} from './MediaMessages'
+   MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage,
+   MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage,
+   MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage,
+   MSStartStreamingMessage} from './MediaServer/MediaMessages'
 import * as os from 'os'
-import {streamingStart, streamingStop} from './mediaServer/streaming'
+import {streamingStart, streamingStop} from './MediaServer/streaming'
 
 const log = debugModule('bmMsE');
 const warn = debugModule('bmMsE:WARN');

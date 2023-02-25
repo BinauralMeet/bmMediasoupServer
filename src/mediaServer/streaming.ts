@@ -1,4 +1,4 @@
-import {MSStartStreamingMessage} from '../MediaMessages'
+import {MSStartStreamingMessage} from './MediaMessages'
 import {FFmpeg} from './ffmpeg'
 import {GStreamer} from './gstreamer'
 import {getPort, releasePort} from './port'

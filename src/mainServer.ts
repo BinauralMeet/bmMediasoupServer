@@ -1,7 +1,7 @@
 import websocket from 'ws'
 import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply, MSPeerMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage,
-  MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaMessages'
+  MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {exit} from 'process'
 
 const CONSOLE_DEBUG = false

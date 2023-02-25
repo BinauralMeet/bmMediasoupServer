@@ -2,7 +2,7 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSPeerMessage, MSConnectMessage} from './MediaMessages'
+import {MSPeerMessage, MSConnectMessage} from './MediaServer/MediaMessages'
 import {PingPong, Worker, Peer, mainServer, sendMSMessage} from './mainServer'
 import {addDataListener} from './DataServer/dataServer'
 
