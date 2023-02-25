@@ -279,3 +279,5 @@ handlersForWorker.set('closeProducer', relayWorkerToPeer)
 
 setRelayHandlers('consumeTransport')
 setRelayHandlers('resumeConsumer')
+setRelayHandlers('streamingStart')
+setRelayHandlers('streamingStop')
