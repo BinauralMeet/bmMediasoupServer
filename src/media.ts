@@ -5,7 +5,7 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage,
    MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage,
    MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage,
-   MSStartStreamingMessage} from './MediaServer/MediaMessages'
+   MSStreamingStartMessage} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
 
@@ -237,11 +237,11 @@ startMediasoup().then(({worker, router}) => {
 
   //  handler for streaming
   handlers.set('streamingStart',(base, ws)=>{
-    const msg = base as MSStartStreamingMessage
+    const msg = base as MSStreamingStartMessage
     streamingStart(router, msg)
   })
   handlers.set('streamingStop',(base, ws)=>{
-    const msg = base as MSStartStreamingMessage
+    const msg = base as MSStreamingStartMessage
     streamingStop(router, msg)
   })
 

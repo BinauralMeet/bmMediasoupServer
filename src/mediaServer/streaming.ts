@@ -1,12 +1,14 @@
-import {MSStartStreamingMessage} from './MediaMessages'
+import {MSStreamingStartMessage} from './MediaMessages'
 import {FFmpeg} from './ffmpeg'
 import {GStreamer} from './gstreamer'
 import {getPort, releasePort} from './port'
 import * as mediasoup from 'mediasoup'
 import { producers } from '../media';
 import { Producer } from 'mediasoup/node/lib/Producer';
+import { assert } from 'console'
 
 const config = require('../../config');
+//console.log(JSON.stringify(config))
 
 const PROCESS_NAME:string = 'FFmpeg'
 const SERVER_PORT = 3030
@@ -24,13 +26,16 @@ export interface RtpInfos{
 }
 class Streamer {
   peer: string
+  id: string
   remotePorts: number[] = []
   transports: mediasoup.types.PlainTransport[] = []
   consumers: mediasoup.types.Consumer[] = []
   process?: FFmpeg | GStreamer
-  info?: RtpInfo
-  constructor(peer_: string){
-    this.peer = peer_
+  infos: RtpInfos
+  constructor(msg:MSStreamingStartMessage){
+    this.peer = msg.peer
+    this.id = msg.id
+    this.infos = {fileName: msg.id}
   }
   remove(){
     streamers.delete(this.peer)
@@ -52,42 +57,50 @@ function getProcess(recordInfo:RtpInfos){
   }
 }
 
-export function streamingStart(router: mediasoup.types.Router, msg: MSStartStreamingMessage){
-  const streamerOld = streamers.get(msg.peer)
+export function streamingStart(router: mediasoup.types.Router, msg: MSStreamingStartMessage){
+  const streamerOld = streamers.get(msg.id)
   if (streamerOld){
     streamerOld.remove()
   }
-
-  const ps:Producer[] = msg.producers.map(pid => producers.get(pid)).filter(p => p) as Producer[]
+  const streamer = new Streamer(msg)
+  streamers.set(msg.id, streamer)
+  const ps = msg.producers.map(pid => producers.get(pid)) as mediasoup.types.Producer[]
+  let count = ps.length
   ps.forEach(producer => {
-    publishProducerRtpStream(msg.peer, router, producer).then(streamer => {
-      streamers.set(msg.peer, streamer)
+    publishProducer(streamer, router, producer).then(() => {
+      count--
+      if (count === 0){
+        streamer.process = getProcess(streamer.infos);
+        streamer.process._observer.on('process-close', () => {
+          streamer.remove()
+        })
+      }
     })
   })
 }
-export function streamingStop(router: mediasoup.types.Router, msg: MSStartStreamingMessage){
-  const streamer = streamers.get(msg.peer)
+export function streamingStop(router: mediasoup.types.Router, msg: MSStreamingStartMessage){
+  const streamer = streamers.get(msg.id)
   if (streamer){
     streamer.remove()
   }
 }
 
-export function publishProducerRtpStream(peer:string, router:mediasoup.types.Router, producer:mediasoup.types.Producer){
-  console.log(`publishProducerRtpStream(${producer.kind})`);
-  const promise = new Promise<Streamer>((resolve, reject)=>{
+export function publishProducer(streamer:Streamer, router:mediasoup.types.Router, producer:mediasoup.types.Producer){
+  console.log(`publishProducer(${producer.kind})`);
+  const promise = new Promise<undefined>((resolve, reject)=>{
     // Create the mediasoup RTP Transport used to send media to the GStreamer process
-    const rtpTransportConfig = config.plainTransport;
+    const rtpTransportConfig = config.mediasoup.plainTransport;
 
     // If the process is set to GStreamer set rtcpMux to false
     if (PROCESS_NAME === 'GStreamer') {
       rtpTransportConfig.rtcpMux = false;
     }
 
+    console.log(`createPlainTransport( ${JSON.stringify(rtpTransportConfig)} )`)
     router.createPlainTransport(rtpTransportConfig).then(rtpTransport=>{
       // Set the receiver RTP ports
-      const remoteRtpPort = getPort();
-      const streamer = new Streamer(peer)
-      streamer.remotePorts.push(remoteRtpPort);
+      const remoteRtpPort = getPort()
+      streamer.remotePorts.push(remoteRtpPort)
 
       let remoteRtcpPort = -1
       // If rtpTransport rtcpMux is false also set the receiver RTCP ports
@@ -97,11 +110,13 @@ export function publishProducerRtpStream(peer:string, router:mediasoup.types.Rou
       }
 
       // Connect the mediasoup RTP transport to the ports used by GStreamer
+      console.log(`rtpTransport.connect()`)
       rtpTransport.connect({
         ip: '127.0.0.1',
         port: remoteRtpPort,
         rtcpPort: remoteRtcpPort
       }).then(()=>{
+        console.log(`streamer.transports.push(${JSON.stringify(rtpTransport)})`)
         streamer.transports.push(rtpTransport)
         // Codec passed to the RTP Consumer must match the codec in the Mediasoup router rtpCapabilities
         const routerCodec = router.rtpCapabilities.codecs?.find(codec => codec.kind === producer.kind)
@@ -115,15 +130,23 @@ export function publishProducerRtpStream(peer:string, router:mediasoup.types.Rou
           rtpCapabilities,
           paused: true
         }).then((rtpConsumer)=>{
+          console.log(`streamer.consumers.push(${JSON.stringify(rtpConsumer)})`)
           streamer.consumers.push(rtpConsumer)
-          streamer.info = {
+          const info:RtpInfo = {
             remoteRtpPort,
             remoteRtcpPort,
             localRtcpPort: rtpTransport.rtcpTuple ? rtpTransport.rtcpTuple.localPort : undefined,
             rtpCapabilities,
             rtpParameters: rtpConsumer.rtpParameters
           }
-          resolve(streamer)
+          if (producer.kind === 'audio'){
+            streamer.infos.audio = info
+          }else if (producer.kind === 'video'){
+            streamer.infos.video = info
+          }else{
+            assert(false)
+          }
+          resolve(undefined)
         })
       })
     })

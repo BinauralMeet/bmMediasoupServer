@@ -120,6 +120,7 @@ export interface MSCloseTransportMessage extends MSMessage{
   transport: string,
 }
 
-export interface MSStartStreamingMessage extends MSPeerMessage{
+export interface MSStreamingStartMessage extends MSPeerMessage{
+  id: string
   producers: string[]
 }
