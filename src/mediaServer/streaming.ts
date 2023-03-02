@@ -1,4 +1,4 @@
-import {MSStreamingStartMessage} from './MediaMessages'
+import {MSStreamingStartMessage, MSStreamingStopMessage} from './MediaMessages'
 import {FFmpeg} from './ffmpeg'
 import {GStreamer} from './gstreamer'
 import {getPort, releasePort} from './port'
@@ -78,7 +78,7 @@ export function streamingStart(router: mediasoup.types.Router, msg: MSStreamingS
     })
   })
 }
-export function streamingStop(router: mediasoup.types.Router, msg: MSStreamingStartMessage){
+export function streamingStop(router: mediasoup.types.Router, msg: MSStreamingStopMessage){
   const streamer = streamers.get(msg.id)
   if (streamer){
     streamer.remove()
