@@ -53,7 +53,7 @@ module.exports = {
         },
         {
           kind: "video",
-          mimeType: "video/h264",
+          mimeType: "video/H264",
           clockRate: 90000,
           parameters: {
             "packetization-mode": 1,
@@ -64,7 +64,7 @@ module.exports = {
         },
         {
           kind: "video",
-          mimeType: "video/h264",
+          mimeType: "video/H264",
           clockRate: 90000,
           parameters: {
             "packetization-mode": 1,

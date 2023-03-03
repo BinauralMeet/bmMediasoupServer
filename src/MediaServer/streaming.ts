@@ -5,6 +5,7 @@ import {getPort, releasePort} from './port'
 import * as mediasoup from 'mediasoup'
 import { producers } from '../media';
 import { assert } from 'console'
+import { RtpCapabilities, RtpCodecCapability } from 'mediasoup/node/lib/RtpParameters'
 
 const config = require('../../config');
 //console.log(JSON.stringify(config))
@@ -73,6 +74,17 @@ export function streamingStart(router: mediasoup.types.Router, msg: MSStreamingS
         streamer.process._observer.on('process-close', () => {
           streamer.remove()
         })
+        const interval = setInterval(()=>{
+          for (const consumer of streamer.consumers) {
+            //  request key frame every 1 second.
+            consumer.resume().then(()=>{
+              consumer.requestKeyFrame()
+            })
+          }
+          if (!streamer.process){
+            clearInterval(interval)
+          }
+        }, 3*1000)
       }
     })
   })
@@ -117,11 +129,22 @@ export function publishProducer(streamer:Streamer, router:mediasoup.types.Router
       }).then(()=>{
         //console.log(`streamer.transports.push(${JSON.stringify(rtpTransport)})`)
         streamer.transports.push(rtpTransport)
+
         // Start the consumer paused
         // Once the gstreamer process is ready to consume resume and send a keyframe
+        const codecs:RtpCodecCapability[] = [];
+        // Codec passed to the RTP Consumer must match the codec in the Mediasoup router rtpCapabilities
+        const routerCodec = router.rtpCapabilities.codecs?.find(
+          codec => codec.kind === producer.kind && (producer.kind!=='video' || codec.mimeType==='video/H264')
+        )
+        if (routerCodec) codecs.push(routerCodec)
+
+        const rtpCapabilities:RtpCapabilities = {
+          codecs,
+        }
         rtpTransport.consume({
           producerId: producer.id,
-          rtpCapabilities:router.rtpCapabilities,
+          rtpCapabilities,
           paused: true
         }).then((rtpConsumer)=>{
           //console.log(`streamer.consumers.push(${JSON.stringify(rtpConsumer)})`)
@@ -130,7 +153,7 @@ export function publishProducer(streamer:Streamer, router:mediasoup.types.Router
             remoteRtpPort,
             remoteRtcpPort,
             localRtcpPort: rtpTransport.rtcpTuple ? rtpTransport.rtcpTuple.localPort : undefined,
-            rtpCapabilities:router.rtpCapabilities,
+            rtpCapabilities,
             rtpParameters: rtpConsumer.rtpParameters
           }
           if (producer.kind === 'audio'){
