@@ -5,6 +5,7 @@ import debugModule from 'debug'
 import {MSPeerMessage, MSConnectMessage} from './MediaServer/MediaMessages'
 import {PingPong, Worker, Peer, mainServer, sendMSMessage} from './mainServer'
 import {addDataListener} from './DataServer/dataServer'
+import { addPositionListener } from './PositionServer/positionServer'
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
@@ -109,6 +110,9 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   }else if (msg.type === 'dataConnect'){
     ws.removeEventListener('message', onFirstMessage)
     addDataListener(ws)
+  }else if (msg.type === 'positionConnect'){
+    ws.removeEventListener('message', onFirstMessage)
+    addPositionListener(ws, msg.peer)
   }else if (msg.type === 'workerAdd'){
     const unique = makeUniqueId(msg.peer, mainServer.workers)
     msg.peer = unique
