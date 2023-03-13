@@ -8,8 +8,8 @@ module.exports = {
   httpPort: 3100,      //  port to listen
   //httpPort: 443,      //  port to listen
   httpPeerStale: 15000,
-  sslCrt: './certs/localhost.pem',
-  sslKey: './certs/localhost-key.pem',
+  sslCrt: './certs/fullchain.pem',
+  sslKey: './certs/privkey.pem',
 
   //----------------------------------------------------------
   //  for media server

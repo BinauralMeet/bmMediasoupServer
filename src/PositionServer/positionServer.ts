@@ -4,7 +4,7 @@ import { sendMSMessage } from '../mainServer'
 
 
 export function addPositionListener(ws: websocket.WebSocket, peer: string){
-  console.log(`addPositionListener called ${ws.url}`)
+  console.log(`addPositionListener called by ${peer}`)
   ws.addEventListener('message', (ev: websocket.MessageEvent) => {
   })
   ws.addEventListener('close', (ev)=>{
