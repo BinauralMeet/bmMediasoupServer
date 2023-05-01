@@ -51,6 +51,7 @@ function addCommonListner(pingPong: PingPong){
   }, 20 * 1000)
 }
 function addPeerListener(peer: Peer){
+  console.log(`addPeerListener ${peer.peer} called.`)
   addCommonListner(peer)
   peer.ws.addEventListener('close', () =>{
     consoleDebug(`WS for peer ${peer.peer} closed.`)
