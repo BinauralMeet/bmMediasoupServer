@@ -4,7 +4,7 @@ module.exports = {
   //----------------------------------------------------------
   //  for main server
   //  main server's http server ip, port, and peer timeout constant
-  httpIp: "0.0.0.0",  //  ip to listen
+  httpIp: "localhost",  //  ip to listen
   httpPort: 3100,      //  port to listen
   //httpPort: 443,      //  port to listen
   httpPeerStale: 15000,

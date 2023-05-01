@@ -6,5 +6,6 @@
     "source.fixAll.tslint": true
   },
   "tslint.packageManager": "yarn",
-  "terminal.explorerKind": "external"
+  "terminal.explorerKind": "external",
+  "editor.fontSize": 14
 }

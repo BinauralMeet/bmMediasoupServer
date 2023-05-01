@@ -74,6 +74,7 @@ messageHandlers.set(MessageType.REQUEST_ALL, (_msg, from, room) => {
   room.properties.forEach((val, key) => {
     from.messagesTo.push({t:MessageType.ROOM_PROP, v:JSON.stringify([key, val])})
   })
+  from.messagesTo.push({t:MessageType.REQUEST_ALL,v:''})
   from.sendMessages()
 })
 
