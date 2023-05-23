@@ -33,7 +33,7 @@ cd /root
 curl https://binaural.me/public_packages/media/updateCert.sh>updateCert.sh
 chmod 777 updateCert.sh
 ./updateCert.sh
-# Give coturn binding permission for ports lower than 1024
+
 setcap CAP_NET_BIND_SERVICE+ep /usr/bin/turnserver
 /etc/init.d/coturn restart
 

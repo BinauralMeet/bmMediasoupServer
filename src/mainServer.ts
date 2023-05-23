@@ -1,8 +1,12 @@
 import websocket from 'ws'
 import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply, MSPeerMessage,
-  MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage,
+  MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {exit} from 'process'
+
+import express from 'express';
+const app = express();
+app.use(express.json()); /
 
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
@@ -57,13 +61,47 @@ function toMSRemotePeer(peer: Peer):MSRemotePeer{
 }
 
 interface Room{
-  id: string
-  peers: Set<Peer>
+  id: string;
+  RoomName: string;
+  RoomOwner: string;
+  RoomPassword: string;
+  requiredLogin: boolean;
+  peers: Set<Peer>;
 }
 
 const peers = new Map<string, Peer>()
 const rooms = new Map<string, Room>()
 const workers = new Map<string, Worker>()
+
+export function getRoomById(roomId: string): Room | undefined {
+  return rooms.get(roomId);
+}
+
+export function setRoom(roomId: string, room: Room): void {
+  rooms.set(roomId, room);
+}
+
+function printExistingRooms() {
+  if (rooms.size === 0) {
+    consoleLog('No existing rooms.');
+  } else {
+    consoleLog('Existing rooms:');
+    for (const room of rooms.values()) {
+      consoleLog(room.id);
+    }
+  }
+}
+
+/*function joinRoom(roomId: string, peerId: string) {
+  const existingRoom = rooms.get(roomId);
+  if (existingRoom) {
+    consoleLog(`Exist: ${roomId}`);
+  } else {
+    consoleLog(`Creating room: ${roomId}`);
+    const room: Room = { id: roomId, peers: new Set<Peer>() };
+    rooms.set(room.id, room);
+  }*/
+
 
 function checkDeleteRoom(room?: Room){
   if (room && room.peers.size === 0){
@@ -173,25 +211,36 @@ handlersForPeer.set('ping', (msg, peer)=>{
 })
 
 handlersForPeer.set('join',(base, peer)=>{
-  const msg = base as MSPeerMessage
-  const join = base as MSRoomMessage
-  let room = rooms.get(join.room)
+  const msg = base as MSPeerMessage;
+  const join = base as MSRoomJoinMessage;
+  let room = rooms.get(join.room);
+
+  printExistingRooms(); //Print me all the existing rooms.
+
   if (room?.peers) {
     room.peers.add(peer)
   }else{
-    room = {id:join.room, peers:new Set<Peer>([peer])}
-    rooms.set(room.id, room)
-    consoleLog(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`)
+    room = {
+      id: join.room,
+      RoomName: join.RoomName,
+      RoomOwner: join.RoomOwner,
+      RoomPassword: join.RoomPassword,
+      requiredLogin: join.requiredLogin,
+      peers: new Set<Peer>([peer])
+    };
+    rooms.set(room.id, room);
+    consoleLog(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`);
   }
-  peer.room = room
-  consoleLog(`${peer.peer} joined to room ${join.room} ${JSON.stringify(Array.from(room.peers.keys()).map(p=>p.peer))}`)
+
+  peer.room = room;
+  consoleLog(`${peer.peer} joined to room ${join.room} ${JSON.stringify(Array.from(room.peers.keys()).map(p=>p.peer))}`);
 
   //  Notify (reply) the room's remotes
   const remoteUpdateMsg:MSRemoteUpdateMessage = {
     type:'remoteUpdate',
     remotes: Array.from(peer.room.peers).map(peer => toMSRemotePeer(peer))
-  }
-  sendMSMessage(remoteUpdateMsg, peer.ws)
+  };
+  sendMSMessage(remoteUpdateMsg, peer.ws);
 })
 handlersForPeer.set('leave', (_base, peer)=>{
   peer.ws.close()

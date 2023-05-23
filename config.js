@@ -89,7 +89,7 @@ module.exports = {
     },
 
     plainTransport: {
-      listenIp: { ip: '0.0.0.0', announcedIp}, // TODO: Change announcedIp to your external IP or domain name
+      listenIp: { ip: '0.0.0.0', announcedIp: null },
       rtcpMux: true,
       comedia: false
     }

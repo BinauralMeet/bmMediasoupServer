@@ -89,25 +89,50 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
+
+  //Here makes the connection to the WS
   if (msg.type === 'connect'){
+
+
+
+    const { roomInfo } = msg;
+    // Assuming you have a function that gets a room object by its ID
+    let room = getRoomById(roomInfo.roomId);
+
+    if (room) {
+      // Apply the new info to the room
+      room.name = roomInfo.roomName;
+      room.owner = roomInfo.roomOwner;
+      room.password = roomInfo.roomPassword;
+      room.requiredLogin = roomInfo.requiredLogin;
+
+      // Save changes to the room. Implementation will depend on your application
+      saveRoom(room);
+    }
+
+
+
     let unique = ''
     let justBefore
+
     if (msg.peerJustBefore && (justBefore = mainServer.peers.get(msg.peerJustBefore))) {
       mainServer.deletePeer(justBefore)
       consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
         `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
       unique = makeUniqueId(justBefore.peer, mainServer.peers)
-    }else{
+    } else {
       unique = makeUniqueId(msg.peer, mainServer.peers)
     }
     msg.peer = unique
     sendMSMessage(msg, ws)
+
     //  create peer
     const peer:Peer = {peer:unique, ws, producers:[], transports:[], pongWait:0}
     mainServer.peers.set(unique, peer)
     ws.removeEventListener('message', onFirstMessage)
     addPeerListener(peer)
     consoleDebug(`${unique} connected: ${JSON.stringify(Array.from(mainServer.peers.keys()))}`)
+
   }else if (msg.type === 'dataConnect'){
     ws.removeEventListener('message', onFirstMessage)
     addDataListener(ws)

@@ -43,6 +43,13 @@ export interface MSRemoteLeftMessage extends MSMessage{
 export interface MSRoomMessage extends MSPeerMessage{
   room: string
 }
+
+export interface MSRoomJoinMessage extends MSRoomMessage {
+  RoomName: string;
+  RoomOwner: string;
+  RoomPassword: string;
+  requiredLogin: boolean;
+}
 export interface MSWorkerUpdateMessage extends MSPeerMessage{
   load: number
 }
