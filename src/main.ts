@@ -94,10 +94,10 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   if (msg.type === 'connect'){
 
 
-
-    const { roomInfo } = msg;
+    //----------------------------- NEW SECTION -----------------------------
+    //const { roomInfo } = msg;
     // Assuming you have a function that gets a room object by its ID
-    let room = getRoomById(roomInfo.roomId);
+    /*let room = getRoomById(roomInfo.roomId);
 
     if (room) {
       // Apply the new info to the room
@@ -109,6 +109,25 @@ function onFirstMessage(messageData: websocket.MessageEvent){
       // Save changes to the room. Implementation will depend on your application
       saveRoom(room);
     }
+
+
+    fetch('wss://localhost:3100/rooms/someRoomId')
+      .then(response => response.json())
+      .then(room => console.log(room));
+
+    // Create a new room
+    fetch('wss://localhost:3100/rooms', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(newRoom),
+    })
+      .then(response => response.json())
+      .then(newRoom => console.log(newRoom));
+
+      */
+    //----------------------------- NEW SECTION -----------------------------
 
 
 

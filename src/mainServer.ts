@@ -4,9 +4,74 @@ import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply, MSPeerM
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {exit} from 'process'
 
+
+
+//------------- Custom Code ------------------------
 import express from 'express';
 const app = express();
-app.use(express.json()); /
+const cors = require('cors');
+app.use(express.json()); // for parsing application/json
+app.use(cors()); // enable CORS
+
+// Endpoint to get a room by its ID
+app.get('/rooms/:RoomName', (req, res) => {
+  const RoomName = req.params.RoomName;
+  let foundRoom = null;
+
+  // Iterate over your rooms collection to find a match
+  for (let room of rooms.values()) {
+    if (room.RoomName === RoomName) {
+      foundRoom = room;
+      break;
+    }
+  }
+
+  if (foundRoom) {
+    res.json(foundRoom);
+  } else {
+    res.status(404).json({ error: 'Room not found' });
+  }
+})
+
+
+// Endpoint to create a new room
+app.post('/rooms', (req, res) => {
+  // TODO: Validate the request body to make sure it has the correct format
+  const newRoom = req.body;
+  rooms.set(newRoom.id, newRoom);
+  res.status(201).json(newRoom);
+});
+
+
+app.post('/checkPassword', (req, res) => {
+  const { roomId, password } = req.body;
+  console.log('Received:', { roomId, password });
+
+  const room = getRoomById(roomId);
+  console.log('Room:', rooms);
+
+  if (!room) {
+    return res.status(404).json({ error: rooms });
+  }
+
+  if (room.RoomPassword !== password) {
+    console.log('Password mismatch:', { entered: password, actual: room.RoomPassword });
+    return res.status(401).json({ error: 'Password is incorrect' });
+  }
+
+  // If everything checks out, return a 200 status code with room details
+  return res.status(200).json(room);
+});
+
+
+
+
+// [3200 is the port for REST]
+// TODO: Add more endpoints to update and delete rooms, if necessary
+app.listen(3200, () => console.log('REST listening on port 3200'))
+//------------- Custom Code ------------------------
+
+
 
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
@@ -85,10 +150,10 @@ function printExistingRooms() {
   if (rooms.size === 0) {
     consoleLog('No existing rooms.');
   } else {
-    consoleLog('Existing rooms:');
-    for (const room of rooms.values()) {
-      consoleLog(room.id);
-    }
+    consoleLog('Existing rooms:', rooms);
+    /*for (const room of rooms.values()) {
+      (room.id);
+    }*/
   }
 }
 
@@ -210,12 +275,15 @@ handlersForPeer.set('ping', (msg, peer)=>{
   sendMSMessage(msg, peer.ws)
 })
 
+
+// --------------> This is where join to the Server
 handlersForPeer.set('join',(base, peer)=>{
   const msg = base as MSPeerMessage;
   const join = base as MSRoomJoinMessage;
   let room = rooms.get(join.room);
 
   printExistingRooms(); //Print me all the existing rooms.
+  //consoleLog("Room Object Info: ", room)
 
   if (room?.peers) {
     room.peers.add(peer)
@@ -226,8 +294,9 @@ handlersForPeer.set('join',(base, peer)=>{
       RoomOwner: join.RoomOwner,
       RoomPassword: join.RoomPassword,
       requiredLogin: join.requiredLogin,
-      peers: new Set<Peer>([peer])
-    };
+      peers: new Set<Peer>([peer]) // <--- The list of users in the Room
+    }
+
     rooms.set(room.id, room);
     consoleLog(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`);
   }

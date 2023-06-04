@@ -6,6 +6,7 @@
   "author": "Shoichi Hasegawa",
   "license": "MIT",
   "dependencies": {
+    "cors": "^2.8.5",
     "debug": "^4.3.4",
     "mediasoup": "3.11.9",
     "shelljs": "^0.8.5",
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "@types/debug": "^4.1.7",
+    "@types/express": "^4.17.17",
     "@types/node": ">17.0.43",
     "@types/ws": ">8.5.3",
     "ts-node-dev": "^2.0.0"
