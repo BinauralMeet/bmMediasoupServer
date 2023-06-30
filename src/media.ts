@@ -8,6 +8,7 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    MSStreamingStartMessage, MSStreamingStopMessage} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
+import { Router } from 'mediasoup/node/lib/Router'
 
 const log = debugModule('bmMsE');
 const warn = debugModule('bmMsE:WARN');
@@ -34,9 +35,24 @@ const hostinfo={
   ip:getIpAddress()
 }
 
+interface GlobalForDebug{
+  worker:mediasoup.types.Worker
+  router:mediasoup.types.Router
+  transports:Map<string, mediasoup.types.Transport>
+  producers:Map<string, mediasoup.types.Producer>
+  consumers:Map<string, mediasoup.types.Consumer>
+}
+
 // start mediasoup
 consoleLog('starting mediasoup')
 startMediasoup().then(({worker, router}) => {
+  const globalForDebug = global as unknown as GlobalForDebug
+  globalForDebug.worker = worker
+  globalForDebug.router = router
+  globalForDebug.transports = transports
+  globalForDebug.producers = producers
+  globalForDebug.consumers = consumers
+
   //  set message handlers
   handlers.set('workerAdd',(base)=>{
     const msg = base as MSPeerMessage
