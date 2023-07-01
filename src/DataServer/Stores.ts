@@ -297,3 +297,8 @@ export const rooms = new Rooms();
 
 type MessageHandler = (msg: Message, participant: ParticipantStore, room: RoomStore) => void
 export const messageHandlers = new Map<string, MessageHandler>()
+
+export const dataServer = {
+  messageHandlers,
+  rooms,
+}

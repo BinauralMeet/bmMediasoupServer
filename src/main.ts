@@ -5,7 +5,9 @@ import debugModule from 'debug'
 import {MSPeerMessage, MSConnectMessage} from './MediaServer/MediaMessages'
 import {PingPong, Worker, Peer, mainServer, sendMSMessage} from './mainServer'
 import {addDataListener} from './DataServer/dataServer'
-import { addPositionListener } from './PositionServer/positionServer'
+import {dataServer} from './DataServer/Stores'
+import {addPositionListener} from './PositionServer/positionServer'
+import {restApp} from './rest'
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
@@ -173,7 +175,9 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   }
 }
 
+
 function main() {
+  Object.assign(global, {d:{mainServer, dataServer}})
   // start https server
   consoleLog('starting wss server');
   try {
@@ -187,6 +191,10 @@ function main() {
     });
 
     const wss = new websocket.Server({server: httpsServer})
+    httpsServer.on('request', (req, res) =>{
+      //console.log(`request: ${JSON.stringify(req.headers)}`)
+      restApp(req, res)
+    })
     wss.on('connection', ws => {
       consoleDebug(`onConnection() `)
       ws.addEventListener('message', onFirstMessage)
