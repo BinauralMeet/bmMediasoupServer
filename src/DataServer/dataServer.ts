@@ -6,6 +6,10 @@ import {getRect, isOverlapped, isOverlappedToCircle, isInRect, isInCircle, str2M
 import {Content, messageHandlers, rooms, RoomStore, ParticipantStore, createContentSent, updateContentSent} from './Stores'
 import websocket from 'ws'
 
+const CONSOLE_DEBUG = false
+const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
+
+
 function instantMessageHandler(msg: Message, from:ParticipantStore, room: RoomStore){
   //  send message to destination or all remotes
   //  console.log(`instantMessageHandler ${msg.t}`, msg)
@@ -323,7 +327,6 @@ setInterval(()=>{
 }, CONNECTION_CHECK_INTERVAL)
 
 export function addDataListener(ws: websocket.WebSocket){
-  console.log(`addDataListener called ${ws.url}`)
   ws.addEventListener('message', (ev: websocket.MessageEvent) => {
     const msgs = JSON.parse(ev.data.toString()) as Message[]
     for(const msg of msgs){
@@ -345,7 +348,7 @@ export function addDataListener(ws: websocket.WebSocket){
           participant = room.getParticipant(msg.p, ws)
         }
         rooms.sockMap.set(ws, {room, participant})
-        console.log(`Participant ${participant.id} joined. ${room.participants.length} people in "${room.id}".`)
+        consoleDebug(`Participant ${participant.id} joined. ${room.participants.length} people in "${room.id}".`)
       }else{
         const rp = rooms.sockMap.get(ws)!
         room = rp.room

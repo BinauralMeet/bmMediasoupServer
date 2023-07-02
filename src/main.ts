@@ -61,6 +61,7 @@ function addPeerListener(peer: Peer){
   })
   peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
     const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    consoleDebug(`Msg ${msg.type} from ${msg.peer}`)
     const handler = mainServer.handlersForPeer.get(msg.type)
     if (handler){
       handler(msg, peer)

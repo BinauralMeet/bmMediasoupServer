@@ -5,7 +5,7 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage,
    MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage,
    MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage,
-   MSStreamingStartMessage, MSStreamingStopMessage} from './MediaServer/MediaMessages'
+   MSStreamingStartMessage, MSStreamingStopMessage, MSCloseTransportMessage} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
 import { Router } from 'mediasoup/node/lib/Router'
@@ -15,8 +15,9 @@ const warn = debugModule('bmMsE:WARN');
 const err = debugModule('bmMsE:ERROR');
 const config = require('../config');
 
-//  const consoleDebug = console.debug
-const consoleDebug = (... arg:any[]) => {}
+
+const CONSOLE_DEBUG = false
+const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
 
@@ -133,6 +134,21 @@ startMediasoup().then(({worker, router}) => {
       consoleError('error in /signaling/connect-transport', e);
       sendMsg.error = `${e}`
       send(sendMsg, ws)
+    }
+  })
+  handlers.set('closeTransport', (base, ws) => {
+    const msg = base as MSCloseTransportMessage
+    try {
+      const transport = transports.get(msg.transport)
+      if (!transport) {
+        consoleError(`closetransport: server-side transport ${msg.transport} not found`, msg)
+      }else{
+        consoleDebug(`Transport ${msg.transport} closed.`, msg)
+        transports.delete(msg.transport)
+        transport.close()
+      }
+    } catch (e) {
+      consoleError('error in /signaling/closeTransport', e);
     }
   })
 

@@ -178,6 +178,7 @@ function checkDeleteRoom(room?: Room){
 export function sendMSMessage<MSM extends MSMessage>(msg: MSM, ws: websocket.WebSocket){
   ws.send(JSON.stringify(msg))
 }
+
 export function sendRoom<MSM extends MSMessage>(msg: MSM, room:Room){
   if (room?.peers){
     for(const peer of room.peers.values()){
@@ -195,6 +196,7 @@ function getPeerAndWorker(id: string){
   if (!peer.worker) peer.worker = getVacantWorker()
   return peer
 }
+
 function getPeer(id: string):Peer{
   const peer = peers.get(id)
   if (!peer){
@@ -203,8 +205,10 @@ function getPeer(id: string):Peer{
   }
   return peer
 }
+
 export function deletePeer(peer: Peer){
   clearInterval(peer.interval)
+  peer.interval = undefined
 
   //   delete from room
   peer.room?.peers.delete(peer)
@@ -221,13 +225,20 @@ export function deletePeer(peer: Peer){
       sendMSMessage(msg, peer.worker.ws)
     }
   })
+  peer.producers=[]
+
   peer.transports.forEach(transport => {
     const msg: MSCloseTransportMessage= {
       type: 'closeTransport',
       transport,
     }
-    sendMSMessage(msg, peer.worker!.ws)
+    console.log(`Send ${msg.type} for ${msg.transport}`)
+    if (peer.worker?.ws){
+      sendMSMessage(msg, peer.worker.ws)
+    }
   })
+  peer.transports=[]
+
   remoteLeft([peer.peer], peer.room!)
   peers.delete(peer.peer)
   if (CONSOLE_DEBUG){
@@ -235,6 +246,7 @@ export function deletePeer(peer: Peer){
     consoleDebug(`Peers: ${peerList}`)
   }
 }
+
 function remoteUpdated(ps: Peer[], room: Room){
   if (!ps.length) return
   const remoteUpdateMsg:MSRemoteUpdateMessage = {
