@@ -12,6 +12,12 @@ apt-get -y install npm
 apt-get -y install python3-pip
 git clone https://github.com/BinauralMeet/bmMediasoupServer.git
 cd bmMediasoupServer
+# edit bmMediasoupServer/config.js to disable debug setting and enable deply setting.
+# comment out
+# mainServer: "wss://localhost:3100",
+# and enable
+# //mainServer: "wss://main.titech.binaural.me", //  url to the main server
+
 npm install --global yarn
 yarn
 yarn build
