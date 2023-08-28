@@ -3,7 +3,7 @@ import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply, MSPeerM
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {exit} from 'process'
-
+import {userLog} from './main'
 
 
 //------------- Custom Code ------------------------
@@ -311,11 +311,11 @@ handlersForPeer.set('join',(base, peer)=>{
     }
 
     rooms.set(room.id, room);
-    consoleLog(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`);
+    userLog.log(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`);
   }
 
   peer.room = room;
-  consoleLog(`${peer.peer} joined to room ${join.room} ${JSON.stringify(Array.from(room.peers.keys()).map(p=>p.peer))}`);
+  userLog.log(`${peer.peer} joined to room '${join.room}' ${room.peers.size}`);
 
   //  Notify (reply) the room's remotes
   const remoteUpdateMsg:MSRemoteUpdateMessage = {
@@ -325,10 +325,9 @@ handlersForPeer.set('join',(base, peer)=>{
   sendMSMessage(remoteUpdateMsg, peer.ws);
 })
 handlersForPeer.set('leave', (_base, peer)=>{
+  userLog.log(`${peer.peer} left from room '${peer.room?.id}' ${peer.room?.peers.size?peer.room?.peers.size-1:'not exist'}`)
   peer.ws.close()
   deletePeer(peer)
-  consoleLog(`${peer.peer} left from room ${peer.room?.id} ${peer.room ?
-     JSON.stringify(Array.from(peer.room.peers.keys()).map(p=>p.peer)):'[]'}`)
 })
 
 

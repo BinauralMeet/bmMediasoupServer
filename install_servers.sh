@@ -12,6 +12,12 @@ apt-get -y install npm
 apt-get -y install python3-pip
 git clone https://github.com/BinauralMeet/bmMediasoupServer.git
 cd bmMediasoupServer
+# edit bmMediasoupServer/config.js to disable debug setting and enable deply setting.
+# comment out
+# mainServer: "wss://localhost:3100",
+# and enable
+# //mainServer: "wss://main.titech.binaural.me", //  url to the main server
+
 npm install --global yarn
 yarn
 yarn build
@@ -20,6 +26,13 @@ yarn global add pm2
 pm2 start dist/media.js --log-date-format 'MM-DD HH:mm:ss.SSS'
 pm2 save
 ln -s /root/.pm2/logs /var/log/pm2
+
+#install certbot and let's encrypt
+ufw arrow 80/tcp
+ufw arrow 443/tcp
+apt-get install certbot
+# get cert
+certbot certonly
 
 #install coturn
 apt-get install coturn
@@ -34,7 +47,9 @@ curl https://binaural.me/public_packages/media/updateCert.sh>updateCert.sh
 chmod 777 updateCert.sh
 ./updateCert.sh
 
+# https://blog.seaoak.jp/how-to-listen-privileged-ports/
 setcap CAP_NET_BIND_SERVICE+ep /usr/bin/turnserver
+
 /etc/init.d/coturn restart
 
 # https://qiita.com/okyk/items/2d7db6b148a43bc3b405

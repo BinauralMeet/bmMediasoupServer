@@ -8,6 +8,7 @@ import {addDataListener} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
+import {Console} from 'console'
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
@@ -16,6 +17,9 @@ const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
+
+const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', 'utf8');
+export const userLog = new Console(userLogFile)
 
 //--------------------------------------------------
 //  utilities

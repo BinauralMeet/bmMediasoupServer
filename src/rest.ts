@@ -8,7 +8,8 @@ restApp.use(express.json()); // for parsing restApplication/json
 restApp.use(cors()); // enable CORS
 
 // Let's create the regular HTTP request and response
-restApp.get('/rooms', function(req, res) {
+restApp.get('/room', function(req, res) {
+  console.log(`get /room  req:${req.path}`)
   let ids = Array.from(mainServer.rooms.keys())
   ids.push(... Array.from(dataServer.rooms.rooms.keys()))
   ids = ids.filter((id, index, self) => self.indexOf(id) === index) //  Make ids unique
@@ -34,4 +35,9 @@ restApp.get('/rooms', function(req, res) {
     }
   })
   res.json(rv)
-});
+})
+
+restApp.get(/\/room\/.+/g , function(req, res) {
+  console.log(`get /\/room\/.+/g req: ${req.path}`)
+//  console.log(req)
+})
