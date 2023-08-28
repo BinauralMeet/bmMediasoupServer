@@ -22,8 +22,8 @@ npm install --global yarn
 yarn
 yarn build
 yarn global add pm2
-#pm2 start dist/main.js --log-date-format 'MM-DD HH:mm:ss.SSS'
-pm2 start dist/media.js --log-date-format 'MM-DD HH:mm:ss.SSS'
+#pm2 start dist/src/main.js --log-date-format 'MM-DD HH:mm:ss.SSS'
+pm2 start dist/src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS'
 pm2 save
 ln -s /root/.pm2/logs /var/log/pm2
 
