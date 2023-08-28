@@ -1,2 +1,2 @@
 #!/bin/sh
-cp letsencrypt/live/`hostname`/* .
+cp /etc/letsencrypt/live/`hostname`/* .
