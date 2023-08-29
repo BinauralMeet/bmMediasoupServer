@@ -31,6 +31,9 @@ ln -s /root/.pm2/logs /var/log/pm2
 #install certbot and let's encrypt
 ufw allow 80/tcp
 ufw allow 443
+ufw allow 3478
+ufw allow 40000:49999/udp
+
 apt-get install certbot
 # get cert
 certbot certonly
