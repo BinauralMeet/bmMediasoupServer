@@ -1,21 +1,36 @@
 const announcedIp='vrc.jp'
 
 module.exports = {
+
   //----------------------------------------------------------
-  //  for main server
-  //  main server's http server ip, port, and peer timeout constant
-  httpIp: "localhost",  //  ip to listen
-  httpPort: 3100,      //  port to listen
-  //httpPort: 443,      //  port to listen
+  //  For Main server
+  //----------------------------------------------------------
+
+  //  Main server's http server ip, port
+  //  For Deploy ---------------------------------------------
+  //httpIp: "main.titech.binaural.me",  //  ip to listen
+  //httpPort: 443,                      //  port to listen
+  //  For Debug ----------------------------------------------
+  httpIp: "localhost",                  //  ip to listen
+  httpPort: 3100,                       //  port to listen
+  //----------------------------------------------------------
+
+  //  peer timeout constant
   httpPeerStale: 15000,
+  //  Path to certs
   sslCrt: './certs/fullchain.pem',
   sslKey: './certs/privkey.pem',
 
   //----------------------------------------------------------
-  //  for media server
+
+
+  //----------------------------------------------------------
+  //  For Media server
+  //----------------------------------------------------------
+
   //  url to main server
-  mainServer: "wss://localhost:3100", //  url to the main server
-  //mainServer: "wss://main.titech.binaural.me", //  url to the main server
+  mainServer: "wss://localhost:3100", //  url to the main server FOR DEOPLOY
+  //mainServer: "wss://main.titech.binaural.me", //  url to the main server FOR DEBUG
   mediasoup: {
     worker: {
       rtcMinPort: 40000,

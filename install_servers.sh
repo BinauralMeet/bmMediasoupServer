@@ -21,6 +21,7 @@ cd bmMediasoupServer
 npm install --global yarn
 yarn
 yarn build
+emacs ./dist/config.js  # edit config file to enable sections for Deploy instead of Debug.
 yarn global add pm2
 #pm2 start dist/src/main.js --log-date-format 'MM-DD HH:mm:ss.SSS'
 pm2 start dist/src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS'
@@ -28,8 +29,8 @@ pm2 save
 ln -s /root/.pm2/logs /var/log/pm2
 
 #install certbot and let's encrypt
-ufw arrow 80/tcp
-ufw arrow 443/tcp
+ufw allow 80/tcp
+ufw allow 443
 apt-get install certbot
 # get cert
 certbot certonly
@@ -52,12 +53,16 @@ setcap CAP_NET_BIND_SERVICE+ep /usr/bin/turnserver
 
 /etc/init.d/coturn restart
 
+
 # https://qiita.com/okyk/items/2d7db6b148a43bc3b405
 # https://lealog.hateblo.jp/entry/2020/03/28/124709
 # https://groups.google.com/g/mediasoup/c/CwsxtmCcrh4/m/puOJlEDLBwAJ
 # https://mediasoup.discourse.group/t/stun-turn-server/1775/10
 # https://ja.tech.jar.jp/webrtc/turn.html
 # TURNS  TURN over TLS
+
+# hostname
+# must be a FQDN (full name with domain).
 
 #ufw status numbered   should be like this
 #[ 1] 22/tcp                     ALLOW IN    Anywhere
