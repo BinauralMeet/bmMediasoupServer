@@ -311,11 +311,11 @@ handlersForPeer.set('join',(base, peer)=>{
     }
 
     rooms.set(room.id, room);
-    userLog.log(`room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`);
+    userLog.log(`${new Date().toLocaleString()}: room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`);
   }
 
   peer.room = room;
-  userLog.log(`${peer.peer} joined to room '${join.room}' ${room.peers.size}`);
+  userLog.log(`${new Date().toLocaleString()}: ${peer.peer} joined to room '${join.room}' ${room.peers.size}`);
 
   //  Notify (reply) the room's remotes
   const remoteUpdateMsg:MSRemoteUpdateMessage = {
@@ -325,7 +325,7 @@ handlersForPeer.set('join',(base, peer)=>{
   sendMSMessage(remoteUpdateMsg, peer.ws);
 })
 handlersForPeer.set('leave', (_base, peer)=>{
-  userLog.log(`${peer.peer} left from room '${peer.room?.id}' ${peer.room?.peers.size?peer.room?.peers.size-1:'not exist'}`)
+  userLog.log(`${new Date().toLocaleString()}: ${peer.peer} left from room '${peer.room?.id}' ${peer.room?.peers.size?peer.room?.peers.size-1:'not exist'}`)
   peer.ws.close()
   deletePeer(peer)
 })

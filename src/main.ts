@@ -18,7 +18,7 @@ const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
 
-const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', 'utf8');
+const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', {flags:'a', encoding:'utf8'});
 export const userLog = new Console(userLogFile)
 
 //--------------------------------------------------
