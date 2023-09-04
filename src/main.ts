@@ -20,6 +20,11 @@ const consoleError = console.log
 
 const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', {flags:'a', encoding:'utf8'});
 export const userLog = new Console(userLogFile)
+export function stamp(){
+  const date = new Date()
+  return `${date.getFullYear()}-${date.getMonth().toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`
+    + `${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}:${date.getSeconds().toString().padStart(2,'0')}.${date.getMilliseconds().toString().padStart(3,'0')}`
+}
 
 //--------------------------------------------------
 //  utilities
