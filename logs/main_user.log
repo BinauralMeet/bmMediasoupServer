@@ -268,3 +268,67 @@
 2023-08-19, 22:46:57.679: room RoomInfo created: ["RoomInfo"]
 2023-08-19, 22:46:57.680: kjkj joined to room 'RoomInfo' 1
 2023-08-19, 22:46:58.708: kjkj joined to room 'RoomInfo' 1
+2023-08-19, 23:08:55.238: room RoomInfo created: ["RoomInfo"]
+2023-08-19, 23:08:55.239: kjkj joined to room 'RoomInfo' 1
+2023-08-19, 23:09:09.459: dfsd joined to room 'RoomInfo' 2
+2023-08-19, 23:09:18.494: dfsd joined to room 'RoomInfo' 2
+2023-08-19, 23:09:39.478: kjkj joined to room 'RoomInfo' 2
+2023-08-19, 23:10:08.287: kjkj joined to room 'RoomInfo' 2
+2023-08-19, 23:10:19.361: dfsd joined to room 'RoomInfo' 2
+2023-08-19, 23:11:08.967: room RoomInfo created: ["RoomInfo"]
+2023-08-19, 23:11:08.967: dfsd joined to room 'RoomInfo' 1
+2023-08-19, 23:11:17.133: kjkj joined to room 'RoomInfo' 2
+2023-08-19, 23:17:15.144: room RoomInfo created: ["RoomInfo"]
+2023-08-19, 23:17:15.144: rodr joined to room 'RoomInfo' 1
+2023-08-19, 23:17:30.697: migu joined to room 'RoomInfo' 2
+2023-08-19, 23:17:35.675: migu left from room 'RoomInfo' 1
+2023-08-19, 23:20:38.227: room RoomInfo created: ["RoomInfo"]
+2023-08-19, 23:20:38.228: rodr joined to room 'RoomInfo' 1
+2023-08-19, 23:20:55.842: migu joined to room 'RoomInfo' 2
+2023-08-19, 23:24:06.467: room RoomInfo created: ["RoomInfo"]
+2023-08-19, 23:24:06.468: rodr joined to room 'RoomInfo' 1
+2023-08-19, 23:49:10.066: room RoomInfo created: ["RoomInfo"]
+2023-08-19, 23:49:10.067: rodr joined to room 'RoomInfo' 1
+2023-08-19, 23:50:39.565: sfds joined to room 'RoomInfo' 2
+2023-08-19, 23:54:02.306: room RoomInfo created: ["RoomInfo"]
+2023-08-19, 23:54:02.306: sfds joined to room 'RoomInfo' 1
+2023-08-19, 23:54:02.309: rodr joined to room 'RoomInfo' 2
+2023-08-19, 23:54:07.648: dhgj joined to room 'RoomInfo' 2
+2023-08-20, 00:04:09.250: room RoomInfo created: ["RoomInfo"]
+2023-08-20, 00:04:09.251: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:09:31.236: room RoomInfo created: ["RoomInfo"]
+2023-08-20, 00:09:31.237: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:18:08.346: room RoomInfo created: ["RoomInfo"]
+2023-08-20, 00:18:08.347: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:22:26.870: room RoomInfo created: ["RoomInfo"]
+2023-08-20, 00:22:26.871: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:27:25.380: room RoomInfo created: ["RoomInfo"]
+2023-08-20, 00:27:25.381: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:27:27.603: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:27:29.026: rodr left from room 'RoomInfo' 0
+2023-08-20, 00:27:31.215: room RoomInfo created: ["RoomInfo"]
+2023-08-20, 00:27:31.216: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:27:32.525: rodr joined to room 'RoomInfo' 1
+2023-08-20, 00:27:51.743: mm joined to room 'RoomInfo' 2
+2023-08-20, 00:27:53.128: mm joined to room 'RoomInfo' 2
+2023-08-20, 00:27:58.637: mm left from room 'RoomInfo' 1
+2023-08-20, 00:28:01.210: rodr left from room 'RoomInfo' 0
+2023-08-20, 00:28:14.450: room _ created: ["_"]
+2023-08-20, 00:28:14.450: rodr joined to room '_' 1
+2023-08-20, 00:28:28.778: room RoomInfo created: ["_","RoomInfo"]
+2023-08-20, 00:28:28.778: mm joined to room 'RoomInfo' 1
+2023-08-20, 00:28:30.428: mm joined to room 'RoomInfo' 1
+2023-08-20, 00:28:34.366: mm left from room 'RoomInfo' 0
+2023-08-20, 00:28:37.923: room RoomInfo created: ["_","RoomInfo"]
+2023-08-20, 00:28:37.923: jjh joined to room 'RoomInfo' 1
+2023-08-20, 00:28:39.574: jjh joined to room 'RoomInfo' 1
+2023-08-20, 00:28:42.653: rodr left from room '_' 0
+2023-08-20, 00:28:45.043: rodr joined to room 'RoomInfo' 2
+2023-08-20, 00:28:46.663: rodr joined to room 'RoomInfo' 2
+2023-08-20, 00:28:51.309: jjh left from room 'RoomInfo' 1
+2023-08-20, 00:31:31.600: rodr left from room 'RoomInfo' 0
+2023-08-20, 00:31:36.283: room hola created: ["hola"]
+2023-08-20, 00:31:36.283: rodr joined to room 'hola' 1
+2023-08-20, 00:31:45.342: dggh joined to room 'hola' 2
+2023-08-20, 00:31:51.279: dggh left from room 'hola' 1
+2023-08-20, 00:31:54.867: rodr left from room 'hola' 0

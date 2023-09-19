@@ -104,50 +104,52 @@ function addPeerListener(peer: Peer) {
     async (messageData: websocket.MessageEvent) => {
       const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage;
       consoleDebug(`Msg ${msg.type} from ${msg.peer}`);
-      console.log("gg: ", msg?.room);
+      console.log("gg: ", msg);
 
       //HERE SERVER RECIEVE CLIENT MESSAGE DATA
       const roomName = msg?.room;
-      if (roomName) {
-        const gd = new GoogleDrive();
-        const gdLogued = await gd.login();
-        const filesRoom = await gdLogued.findFileByName(`${roomName}.json`);
-        const files = [] as any;
 
-        console.log("fileRoom", filesRoom);
-        if (filesRoom) {
-          filesRoom.forEach(async (file) => {
-            console.log("file name: ", file.name);
-            console.log("file id: ", file.id);
-            // console.log("file",file.export);
-            const downloaded = await gdLogued
-              .dowloadJsonFile(file.id as string)
-              .then((data) => {
-                const handler = mainServer.handlersForPeer.get(msg.type);
-                if (handler) {
-                  handler(msg, peer);
-                } else {
-                  console.warn(
-                    `Unhandle peer message ${msg.type} received from ${msg.peer}`
-                  );
-                }
-              })
-              .catch(console.error);
-          });
-          console.log("existe bb");
-        }
-      }
-      // login.uploadJsonFile({ file: "gg" });
-
-      // aqui bb va lo de validacion de logueo
-      /*const handler = mainServer.handlersForPeer.get(msg.type);
+      //Peer Listener Validation
+      const handler = mainServer.handlersForPeer.get(msg.type);
       if (handler) {
+        console.log("Connect message: ", msg)
         handler(msg, peer);
       } else {
         console.warn(
           `Unhandle peer message ${msg.type} received from ${msg.peer}`
         );
-      }*/
+      }
+
+      //Peer Join Validation
+      if (msg.type==="join") {
+        const gd = new GoogleDrive();
+        const gdLogued = await gd.login();
+        const filesRoom = await gdLogued.findFileByName(`${roomName}.json`);
+        const files = [] as any;
+
+
+        if (filesRoom) filesRoom.forEach(async (file) => {
+          console.log("file name: ", file.name);
+          console.log("file id: ", file.id);
+          // console.log("file",file.export);
+          const downloaded = await gdLogued
+            .dowloadJsonFile(file.id as string)
+            .then((data) => {
+              // se conecta
+              console.log("downloaded data: ", data)
+              const handler = mainServer.handlersForPeer.get(msg.type);
+              if (handler) {
+                handler(msg, peer);
+              } else {
+                console.warn(
+                  `Unhandle peer message ${msg.type} received from ${msg.peer}`
+                );
+              }
+            })
+            .catch(console.error);
+        });
+        console.log("existe bb");
+      }
     }
   );
 }
@@ -195,6 +197,10 @@ async function onFirstMessage(messageData: websocket.MessageEvent) {
   if (msg.type === "connect") {
     let unique = "";
     let justBefore;
+
+    console.log("[onFirstMessage] msg connect: ", msg);
+
+    if(msg?.peerJustBefore) console.log("msg connect get peer: ", mainServer.peers.get(msg?.peerJustBefore))
 
     if (
       msg.peerJustBefore &&
