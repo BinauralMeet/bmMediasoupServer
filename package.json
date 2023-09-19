@@ -6,9 +6,11 @@
   "author": "Shoichi Hasegawa",
   "license": "MIT",
   "dependencies": {
+    "@google-cloud/local-auth": "2.1.0",
     "cors": "^2.8.5",
     "debug": "^4.3.4",
     "express": "^4.18.2",
+    "googleapis": "105",
     "mediasoup": "3.11.9",
     "shelljs": "^0.8.5",
     "ts-node": ">10.8.1",

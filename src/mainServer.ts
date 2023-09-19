@@ -312,6 +312,7 @@ handlersForPeer.set('join',(base, peer)=>{
 
     rooms.set(room.id, room);
     userLog.log(`${stamp()}: room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`);
+    //console.log("New room: ", `${stamp()}: room ${join.room} created: ${JSON.stringify(Array.from(rooms.keys()))}`)
   }
 
   peer.room = room;
@@ -324,6 +325,7 @@ handlersForPeer.set('join',(base, peer)=>{
   };
   sendMSMessage(remoteUpdateMsg, peer.ws);
 })
+
 handlersForPeer.set('leave', (_base, peer)=>{
   userLog.log(`${stamp()}: ${peer.peer} left from room '${peer.room?.id}' ${peer.room?.peers.size?peer.room?.peers.size-1:'not exist'}`)
   peer.ws.close()

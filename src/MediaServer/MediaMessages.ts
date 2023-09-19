@@ -13,6 +13,7 @@ export interface MSMessage{
 }
 export interface MSPeerMessage extends MSMessage{
   peer: string
+  room?: string
   remote?: string
 }
 export interface MSConnectMessage extends MSPeerMessage{

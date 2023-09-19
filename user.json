@@ -1,0 +1,29 @@
+{
+  "room_id": "room1",
+  "room_name": "Meeting Room 1",
+  "password": "password123",
+  "owners": [
+    {
+      "user_id": "owner1",
+      "username": "John",
+      "email": "john@example.com"
+    },
+    {
+      "user_id": "owner2",
+      "username": "Alice",
+      "email": "alice@example.com"
+    }
+  ],
+  "users": [
+    {
+      "user_id": "user1",
+      "username": "Bob",
+      "email": "bob@example.com"
+    },
+    {
+      "user_id": "user2",
+      "username": "Eve",
+      "email": "eve@example.com"
+    }
+  ]
+}
