@@ -329,6 +329,7 @@ setInterval(()=>{
 export function addDataListener(ws: websocket.WebSocket){
   ws.addEventListener('message', (ev: websocket.MessageEvent) => {
     const msgs = JSON.parse(ev.data.toString()) as Message[]
+    if (!Array.isArray(msgs)) return
     for(const msg of msgs){
       //  if (msg.t !== MessageType.REQUEST_RANGE && msg.t !== MessageType.PARTICIPANT_MOUSE){ console.log('ws:', ev); }
       if (!msg.t){

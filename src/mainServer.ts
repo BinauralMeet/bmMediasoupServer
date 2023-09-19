@@ -197,11 +197,11 @@ function getPeerAndWorker(id: string){
   return peer
 }
 
-function getPeer(id: string):Peer{
+function getPeer(id: string):Peer|undefined{
   const peer = peers.get(id)
   if (!peer){
     consoleError(`peer ${id} not found.`)
-    return {peer:'', producers:[], transports:[], ws:new websocket.WebSocket(''), pongWait:0}
+    return undefined
   }
   return peer
 }
@@ -369,20 +369,44 @@ function setRelayHandlers(mt: MSMessageType){
 //  handlers for both
 setRelayHandlers('rtpCapabilities')
 handlersForPeer.set('createTransport', relayPeerToWorker)
-handlersForWorker.set('createTransport', (base)=>{
+handlersForWorker.set('createTransport', (base, worker)=>{
   const msg = base as MSCreateTransportReply
   const peer = getPeer(msg.peer)
+  if (!peer){
+    consoleError(`peer '${msg.peer}' not found.`)
+    const cmsg: MSCloseTransportMessage= {
+      type: 'closeTransport',
+      transport: msg.transport,
+    }
+    if (worker?.ws){
+      sendMSMessage(cmsg, worker.ws)
+    }
+    return
+  }
   if (msg.transport){ peer.transports.push(msg.transport) }
   sendMSMessage(base, peer.ws)
 })
 
-
 setRelayHandlers('connectTransport')
 
 handlersForPeer.set('produceTransport', relayPeerToWorker)
-handlersForWorker.set('produceTransport', (base)=>{
+handlersForWorker.set('produceTransport', (base, worker)=>{
   const msg = base as MSProduceTransportReply
   const peer = getPeer(msg.peer)
+  if (!peer){
+    consoleError(`peer '${msg.peer}' not found.`)
+    if (msg.producer){
+      const cmsg: MSCloseProducerMessage= {
+        type: 'closeProducer',
+        peer: msg.peer,
+        producer: msg.producer,
+      }
+      if (worker?.ws){
+        sendMSMessage(cmsg, worker.ws)
+      }
+    }
+    return
+  }
   if (msg.producer){
     if (peer.producers.find(p => p.role === msg.role && p.kind === msg.kind)){
       consoleError(`A producer for the same role "${msg.role}" and kind "${msg.kind}" already exists for peer "${peer.peer}".`)
