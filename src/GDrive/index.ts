@@ -148,11 +148,11 @@ export class GoogleDrive {
         return promise;
       } else {
         console.log("File not found or error occurred.");
-        return Promise.reject("File not found or error occurred.");
+        throw new Error("File not found or error occurred.");
       }
     } catch (error) {
       console.error("Error:", error);
-      return Promise.reject("Error to get jsonFile");
+      throw new Error("Error to get jsonFile");
     }
   }
 

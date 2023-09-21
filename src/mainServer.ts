@@ -1,7 +1,7 @@
 import websocket from 'ws'
 import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply, MSPeerMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
-  MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
+  MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage, MSAuthMessage} from './MediaServer/MediaMessages'
 import {exit} from 'process'
 import {userLog, stamp} from './main'
 
@@ -175,9 +175,14 @@ function checkDeleteRoom(room?: Room){
   }
 }
 
+
+//HERE SEND MESSAGE TO CLIENT
 export function sendMSMessage<MSM extends MSMessage>(msg: MSM, ws: websocket.WebSocket){
   ws.send(JSON.stringify(msg))
+  console.log("SEND MESSAGE:", msg)
 }
+
+
 
 export function sendRoom<MSM extends MSMessage>(msg: MSM, room:Room){
   if (room?.peers){

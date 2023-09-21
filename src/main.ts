@@ -93,65 +93,140 @@ function addCommonListner(pingPong: PingPong) {
 }
 function addPeerListener(peer: Peer) {
   console.log(`addPeerListener ${peer.peer} called.`);
-  //console.log("Peer: ", peer)
+  console.log("----Peer---: ", peer.peer)
   addCommonListner(peer);
-  peer.ws.addEventListener("close", () => {
-    consoleDebug(`WS for peer ${peer.peer} closed.`);
-    mainServer.deletePeer(peer);
-  });
+  let isClosed = false; // Initialize isClosed flag
+
+  /*peer.ws.addEventListener("close", () => {
+    if (!isClosed) { // Check if WebSocket is not already closed
+      isClosed = true; // Set isClosed flag to true
+      consoleDebug(`WS for peer ${peer.peer} closed.`);
+      mainServer.deletePeer(peer);
+    }
+  });*/
+
+
   peer.ws.addEventListener(
     "message",
     async (messageData: websocket.MessageEvent) => {
       const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage;
       consoleDebug(`Msg ${msg.type} from ${msg.peer}`);
-      console.log("gg: ", msg);
+      //console.log("gg: ", msg);
 
       //HERE SERVER RECIEVE CLIENT MESSAGE DATA
       const roomName = msg?.room;
 
-      //Peer Listener Validation
-      const handler = mainServer.handlersForPeer.get(msg.type);
-      if (handler) {
-        console.log("Connect message: ", msg)
-        handler(msg, peer);
-      } else {
-        console.warn(
-          `Unhandle peer message ${msg.type} received from ${msg.peer}`
-        );
-      }
-
       //Peer Join Validation
-      if (msg.type==="join") {
+      if (msg.type === "join") {
         const gd = new GoogleDrive();
         const gdLogued = await gd.login();
         const filesRoom = await gdLogued.findFileByName(`${roomName}.json`);
-        const files = [] as any;
 
+        console.log("filesRoom", filesRoom);
 
-        if (filesRoom) filesRoom.forEach(async (file) => {
-          console.log("file name: ", file.name);
-          console.log("file id: ", file.id);
-          // console.log("file",file.export);
-          const downloaded = await gdLogued
-            .dowloadJsonFile(file.id as string)
-            .then((data) => {
-              // se conecta
-              console.log("downloaded data: ", data)
-              const handler = mainServer.handlersForPeer.get(msg.type);
-              if (handler) {
-                handler(msg, peer);
-              } else {
-                console.warn(
-                  `Unhandle peer message ${msg.type} received from ${msg.peer}`
-                );
-              }
-            })
-            .catch(console.error);
-        });
-        console.log("existe bb");
+        if (filesRoom && filesRoom.length > 0) {
+          //console.log('FILES ROOMS', filesRoom)
+          console.log("existe bb");
+          //@ts-ignore
+          filesRoom.forEach((file) => readGDFile(
+              file, msg, peer
+            ));
+        } else {
+          console.log("Not any [FILE] Found.. Connection Deny it");
+          /*peer.ws.close();
+          mainServer.deletePeer(peer);*/
+          const roomData = {
+            roomName: roomName,
+            owners: [peer.peer],
+            peers: [peer.peer],
+            password: "RoomPassword"
+          };
+          const NewRoomjsonData = JSON.stringify(roomData)
+          gd.uploadJsonFile(NewRoomjsonData, (roomName+".json"));
+
+        }
+        /* peer.ws.close();
+        mainServer.deletePeer(peer); */
+      } else {
+        //Peer Listener Validation
+        connectHandlerForPeer(msg, peer);
+        /* const handler = mainServer.handlersForPeer.get(msg.type);
+        if (handler) {
+          console.log("Connect message: ", msg);
+          handler(msg, peer);
+        } else {
+          console.warn(
+            `Unhandle peer message ${msg.type} received from ${msg.peer}`
+          );
+        } */
       }
     }
   );
+}
+
+
+// conexion a los web socket del servidor
+function connectHandlerForPeer(msg: MSPeerMessage, peer: Peer) {
+  const handler = mainServer.handlersForPeer.get(msg.type);
+  if (handler) {
+    console.log("Connect message: ", msg);
+    handler(msg, peer);
+  } else {
+    console.warn(`Unhandle peer message ${msg.type} received from ${msg.peer}`);
+  }
+}
+
+async function readGDFile(file: any, msg: MSPeerMessage, peer: Peer) {
+  console.log("file name: ", file.name);
+  console.log("file id: ", file.id);
+  // console.log("file",file.export);
+  try {
+    const gd = new GoogleDrive();
+    const gdLogued = await gd.login();
+    const downloaded = await await gdLogued.dowloadJsonFile(file.id as string);
+
+    const jsonData = JSON.parse(downloaded as string);
+
+    console.log("jsonData", jsonData);
+
+    // Verificamos si 'dataName' existe en el JSON
+    if (jsonData /* && jsonData.password ==="password" */) {
+      console.log("Existo");
+      connectHandlerForPeer(msg, peer);
+    } else {
+      console.log("No existo");
+    }
+    /*if (downloaded) {
+      console.log("download executed", downloaded)
+       downloaded.then((data) => {
+        // It's try to Connects to the Room
+        const resultData = JSON.parse(data as string);
+        if (resultData.file = "gg") { //dejalo como resultdata no mas, opuse el gg para probar
+          console.log("---* DRIVE FOLDER DATA *---: ", resultData)
+          const handler = mainServer.handlersForPeer.get(msg.type);
+          if (handler) {
+            handler(msg, peer);
+          } else {
+            console.warn(`Unhandle peer message ${msg.type} received from ${msg.peer}`);
+          }
+        } else {
+          //leave
+          console.log("Connection Deny it")
+          peer.ws.close()
+          mainServer.deletePeer(peer)
+        }
+      })
+      .catch(error =>{
+        console.log(error)
+      });
+    }else{
+      console.log("No file found it 2///")
+    }*/
+  } catch (error) {
+    console.log("No file found it ///", error);
+  } finally {
+    console.log("finalice", file);
+  }
 }
 
 function addWorkerListener(worker: Worker) {
@@ -181,7 +256,7 @@ async function onFirstMessage(messageData: websocket.MessageEvent) {
   const ws = messageData.target;
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage;
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`);
-  console.log("Message: ", msg)
+  console.log("Message: ", msg);
 
   /* const gdRes = gd.listFiles()
 
@@ -200,7 +275,11 @@ async function onFirstMessage(messageData: websocket.MessageEvent) {
 
     console.log("[onFirstMessage] msg connect: ", msg);
 
-    if(msg?.peerJustBefore) console.log("msg connect get peer: ", mainServer.peers.get(msg?.peerJustBefore))
+    if (msg?.peerJustBefore)
+      console.log(
+        "msg connect get peer: ",
+        mainServer.peers.get(msg?.peerJustBefore)
+      );
 
     if (
       msg.peerJustBefore &&
