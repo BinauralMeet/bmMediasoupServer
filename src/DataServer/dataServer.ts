@@ -3,7 +3,7 @@ import {extractSharedContentInfo, ISharedContent, isEqualSharedContentInfo} from
 import {MessageType, InstantMessageType, StoredMessageType, InstantMessageKeys, StoredMessageKeys,
   ParticipantMessageType, ParticipantMessageKeys} from './DataMessageType'
 import {getRect, isOverlapped, isOverlappedToCircle, isInRect, isInCircle, str2Mouse, str2Pose} from './coordinates'
-import {Content, messageHandlers, rooms, RoomStore, ParticipantStore, createContentSent, updateContentSent} from './Stores'
+import {Content, dataServer, messageHandlers, rooms, RoomStore, ParticipantStore, createContentSent, updateContentSent} from './Stores'
 import websocket from 'ws'
 
 const CONSOLE_DEBUG = false
@@ -326,6 +326,9 @@ setInterval(()=>{
   }
 }, CONNECTION_CHECK_INTERVAL)
 
+
+
+/*
 export function addDataListener(ws: websocket.WebSocket){
   ws.addEventListener('message', (ev: websocket.MessageEvent) => {
     const msgs = JSON.parse(ev.data.toString()) as Message[]
@@ -365,6 +368,80 @@ export function addDataListener(ws: websocket.WebSocket){
       }else{
         console.error(`No message handler for ${msg.t} - ${msg}`)
       }
+    }
+  })
+  ws.addEventListener('close', (ev)=>{
+    for(const room of rooms.rooms.values()){
+      for(const participant of room.participants.values()){
+        if (participant.socket === ws){
+          console.warn(`Participant ${participant.id} left by websocket close code:`
+            + `${ev.code}, reason:${ev.reason}.`);
+          room.onParticipantLeft(participant)
+          return
+        }
+      }
+    }
+  })
+}
+*/
+
+
+//--------------------------------------------------
+//  Message queue and message handling
+interface DataAndWs{
+  msg: Message,
+  ws: websocket.WebSocket
+}
+const dataQueue = new Array<DataAndWs>
+export function processData():boolean{
+  const top = dataQueue.shift()
+  if (top){ //  peer
+    if (!top.msg.t){
+      console.error(`Invalid message: ${top.msg}`)
+    }
+
+    //  prepare participant and room
+    let participant:ParticipantStore
+    let room:RoomStore
+    if (top.msg.r && top.msg.p){
+      //  create room and participant
+      room = rooms.get(top.msg.r)
+      participant = room.getParticipant(top.msg.p, top.ws)
+      if (participant.socket !== top.ws){
+        console.log(`Remove old participant with the same id '${participant.id}'.`)
+        room.onParticipantLeft(participant)
+        participant = room.getParticipant(top.msg.p, top.ws)
+      }
+      rooms.sockMap.set(top.ws, {room, participant})
+      consoleDebug(`Participant ${participant.id} joined. ${room.participants.length} people in "${room.id}".`)
+    }else{
+      const rp = rooms.sockMap.get(top.ws)!
+      room = rp.room
+      participant = rp.participant
+    }
+
+    participant.lastReceiveTime = Date.now()
+
+    //  call handler
+    const handler = messageHandlers.get(top.msg.t)
+    if (handler){
+      handler(top.msg, participant, room)
+    }else{
+      console.error(`No message handler for ${top.msg.t} - ${top.msg}`)
+    }
+    return true
+  }
+  return false
+}
+
+//--------------------------------------------------
+//  Functions to add listners to websocket
+//
+export function addDataListener(ws:websocket.WebSocket){
+  ws.addEventListener('message', (ev: websocket.MessageEvent) => {
+    const msgs = JSON.parse(ev.data.toString()) as Message[]
+    if (msgs.length){
+      dataQueue.push(...msgs.map(msg => ({msg, ws})))
     }
   })
   ws.addEventListener('close', (ev)=>{

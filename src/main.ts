@@ -2,13 +2,14 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSPeerMessage, MSConnectMessage} from './MediaServer/MediaMessages'
-import {PingPong, Worker, Peer, mainServer, sendMSMessage} from './mainServer'
-import {addDataListener} from './DataServer/dataServer'
+import {MSConnectMessage} from './MediaServer/MediaMessages'
+import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
+import {addDataListener, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
 import {Console} from 'console'
+
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
@@ -41,61 +42,9 @@ function makeUniqueId(id:string, map: Map<string, any>){
 }
 
 
-//--------------------------------------------------
-//  Websocket message handlers
-function addCommonListner(pingPong: PingPong){
-  pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
-  pingPong.ws.on('pong', (ev) =>{
-    pingPong.pongWait --
-    consoleDebug(`pong ${pingPong.pongWait}`)
-  })
-  pingPong.interval = setInterval(()=>{
-    if (pingPong.pongWait){
-      const id = (pingPong as Worker).id || (pingPong as Peer).peer
-      console.warn(`WS for '${id}' timed out. pong wait count = ${pingPong.pongWait}.`)
-      pingPong.ws.close()
-      clearInterval(pingPong.interval)
-      return
-    }
-    pingPong.ws.ping()
-    pingPong.pongWait ++
-  }, 20 * 1000)
-}
-function addPeerListener(peer: Peer){
-  console.log(`addPeerListener ${peer.peer} called.`)
-  addCommonListner(peer)
-  peer.ws.addEventListener('close', () =>{
-    consoleDebug(`WS for peer ${peer.peer} closed.`)
-    mainServer.deletePeer(peer)
-  })
-  peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
-    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
-    consoleDebug(`Msg ${msg.type} from ${msg.peer}`)
-    const handler = mainServer.handlersForPeer.get(msg.type)
-    if (handler){
-      handler(msg, peer)
-    }else{
-      console.warn(`Unhandle peer message ${msg.type} received from ${msg.peer}`)
-    }
-  })
-}
-function addWorkerListener(worker: Worker){
-  addCommonListner(worker)
-  worker.ws.addEventListener('close', () =>{
-    consoleDebug(`WS for worker ${worker.id} closed.`)
-    mainServer.deleteWorker(worker)
-  })
-  worker.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
-    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
-    const handler = mainServer.handlersForWorker.get(msg.type)
-    if (handler){
-      handler(msg, worker)
-    }else{
-      console.warn(`Unhandle workder message ${msg.type} received from ${msg.peer}`)
-    }
-  })
-}
 
+//--------------------------------------------------
+//  First websocket message handler
 //  After connection, this handler judge kind of the websocket and add appropriate handlers.
 function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
@@ -104,45 +53,6 @@ function onFirstMessage(messageData: websocket.MessageEvent){
 
   //Here makes the connection to the WS
   if (msg.type === 'connect'){
-
-
-    //----------------------------- NEW SECTION -----------------------------
-    //const { roomInfo } = msg;
-    // Assuming you have a function that gets a room object by its ID
-    /*let room = getRoomById(roomInfo.roomId);
-
-    if (room) {
-      // Apply the new info to the room
-      room.name = roomInfo.roomName;
-      room.owner = roomInfo.roomOwner;
-      room.password = roomInfo.roomPassword;
-      room.requiredLogin = roomInfo.requiredLogin;
-
-      // Save changes to the room. Implementation will depend on your application
-      saveRoom(room);
-    }
-
-
-    fetch('wss://localhost:3100/rooms/someRoomId')
-      .then(response => response.json())
-      .then(room => console.log(room));
-
-    // Create a new room
-    fetch('wss://localhost:3100/rooms', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(newRoom),
-    })
-      .then(response => response.json())
-      .then(newRoom => console.log(newRoom));
-
-      */
-    //----------------------------- NEW SECTION -----------------------------
-
-
-
     let unique = ''
     let justBefore
 
@@ -214,6 +124,24 @@ function main() {
       httpsServer.listen(config.httpPort, config.httpIp, () => {
         consoleLog(`server is running and listening on ` +
                     `https://${config.httpIp}:${config.httpPort}`);
+        //  Start process to handle queued messages
+        const INTERVAL = 100
+        let count=0
+        setInterval(()=>{
+          const start = Date.now()
+          let now = start
+          while(now - start < INTERVAL/2){
+            let processed = processWorker()
+            if (!processed) processed = processPeer()
+            if (!processed) processed = processData()
+            if (!processed) break
+            count ++
+            now = Date.now()
+          }
+          //console.log(`Process ${count} messages.`)
+          count = 0
+    }, INTERVAL)
+
         resolve();
       });
     })

@@ -1,5 +1,5 @@
 import websocket from 'ws'
-import {MSMessage, MSMessageType, MSRoomMessage, MSCreateTransportReply, MSPeerMessage,
+import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {exit} from 'process'
@@ -264,6 +264,7 @@ function remoteLeft(ps: string[], room:Room){
   sendRoom(remoteLeftMsg, room)
 }
 
+
 //-------------------------------------------------------
 //  handlers for worker
 export const handlersForWorker = new Map<MSMessageType, (base:MSMessage, worker: Worker)=>void>()
@@ -435,3 +436,84 @@ setRelayHandlers('consumeTransport')
 setRelayHandlers('resumeConsumer')
 setRelayHandlers('streamingStart')
 setRelayHandlers('streamingStop')
+
+
+//-------------------------------------------------------
+//  message queue and process messages
+//
+interface MessageAndWorker {msg: MSMessage, worker: Worker}
+const workerQueue = new Array<MessageAndWorker>
+export function processWorker():boolean{
+  const top = workerQueue.shift()
+  if (top){ //  woker
+    const handler = mainServer.handlersForWorker.get(top.msg.type)
+    if (handler){
+      handler(top.msg, top.worker)
+    }else{
+      console.warn(`Unhandle peer message ${top.msg.type} received from ${top.worker.id}`)
+    }
+    return true
+  }
+  return false
+}
+
+interface MessageAndPeer {msg: MSMessage, peer: Peer}
+const peerQueue = new Array<MessageAndPeer>
+export function processPeer(){
+  const top = peerQueue.shift()
+  if (top){ //  peer
+    const handler = mainServer.handlersForPeer.get(top.msg.type)
+    if (handler){
+      handler(top.msg, top.peer)
+    }else{
+      console.warn(`Unhandle peer message ${top.msg.type} received from ${top.peer.peer}`)
+    }
+    return true
+  }
+  return false
+}
+//--------------------------------------------------
+//  Functions to add listners to websocket
+//
+function addCommonListner(pingPong: PingPong){
+  pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
+  pingPong.ws.on('pong', (ev) =>{
+    pingPong.pongWait --
+    consoleDebug(`pong ${pingPong.pongWait}`)
+  })
+  pingPong.interval = setInterval(()=>{
+    if (pingPong.pongWait){
+      const id = (pingPong as Worker).id || (pingPong as Peer).peer
+      console.warn(`WS for '${id}' timed out. pong wait count = ${pingPong.pongWait}.`)
+      pingPong.ws.close()
+      clearInterval(pingPong.interval)
+      return
+    }
+    pingPong.ws.ping()
+    pingPong.pongWait ++
+  }, 20 * 1000)
+}
+export function addPeerListener(peer: Peer){
+  console.log(`addPeerListener ${peer.peer} called.`)
+  addCommonListner(peer)
+  peer.ws.addEventListener('close', () =>{
+    consoleDebug(`WS for peer ${peer.peer} closed.`)
+    mainServer.deletePeer(peer)
+  })
+  peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
+    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    consoleDebug(`Msg ${msg.type} from ${msg.peer}`)
+    peerQueue.push({msg, peer})
+  })
+}
+export function addWorkerListener(worker: Worker){
+  addCommonListner(worker)
+  worker.ws.addEventListener('close', () =>{
+    consoleDebug(`WS for worker ${worker.id} closed.`)
+    mainServer.deleteWorker(worker)
+  })
+  worker.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
+    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    workerQueue.push({msg, worker})
+  })
+}

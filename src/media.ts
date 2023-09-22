@@ -141,7 +141,7 @@ startMediasoup().then(({worker, router}) => {
     try {
       const transport = transports.get(msg.transport)
       if (!transport) {
-        consoleError(`closetransport: server-side transport ${msg.transport} not found`, msg)
+        consoleError(`closetransport: server-side transport ${msg.transport} not found`)
       }else{
         consoleDebug(`Transport ${msg.transport} closed.`, msg)
         transports.delete(msg.transport)
