@@ -1,7 +1,7 @@
 import * as mediasoup from 'mediasoup'
 export type MSMessageType =
   'dataConnect' | 'positionConnect' | 'position' |
-  'connect' | 'join' | 'ping' | 'rtpCapabilities' | 'leave' |
+  'connect' | 'join' | 'ping' | 'pong' | 'rtpCapabilities' | 'leave' | 'leave_error' |
   'remoteUpdate' | 'remoteLeft' |
   'workerAdd' | 'workerDelete' | 'workerUpdate' |
   'createTransport' | 'closeTransport' | 'connectTransport' |

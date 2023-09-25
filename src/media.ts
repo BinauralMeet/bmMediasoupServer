@@ -9,6 +9,7 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
 import { Router } from 'mediasoup/node/lib/Router'
+import { debuglog } from 'util'
 
 const log = debugModule('bmMsE');
 const warn = debugModule('bmMsE:WARN');
@@ -24,6 +25,8 @@ const consoleError = console.log
 let ws = new websocket.WebSocket(null)
 let workerId = ''
 let workerLoad = 0
+let lastPingTimestamp = 0
+
 const transports = new Map<string, mediasoup.types.Transport>()
 export const producers = new Map<string, mediasoup.types.Producer>()
 const consumers = new Map<string, mediasoup.types.Consumer>()
@@ -297,15 +300,27 @@ startMediasoup().then(({worker, router}) => {
     ws.onerror = (ev)=>{
       consoleLog(`ws error ${ev.message}, state:${ws.readyState}`)
     }
+    ws.on('ping', ()=>{
+      debuglog('ping received.')
+      ws.pong()
+      lastPingTimestamp = Date.now()
+    })
   }
 
+  lastPingTimestamp = Date.now()
   consoleLog('connecting to main server');
+  const TIMEOUT = 30 * 1000
   setInterval(()=>{
-    if (ws.readyState !== ws.OPEN){
+    if (ws.readyState === ws.OPEN){
+      if (lastPingTimestamp + TIMEOUT < Date.now()){
+        consoleLog('Ping timeout. Terminate websocket.')
+        ws.terminate()
+      }
+    }else{
       consoleLog('Try to connect to main server.')
       connectToMain()
     }
-  }, 5000)
+  }, TIMEOUT/2)
 })
 
 

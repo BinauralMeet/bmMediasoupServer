@@ -2,12 +2,13 @@ import websocket from 'ws'
 import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
-import {exit} from 'process'
+import {exit, send} from 'process'
 import {userLog, stamp} from './main'
 
 
 //------------- Custom Code ------------------------
 import express from 'express';
+import { debuglog } from 'util';
 const app = express();
 const cors = require('cors');
 app.use(express.json()); // for parsing application/json
@@ -83,7 +84,7 @@ const consoleError = console.log
       knows peers=endpoints, rooms, producers and consumers
       a peer can join to only one room.
 
-    each media server has 1 worker and router
+    each media server has 1 worker and router i.e.
     media server 1 has producer1 and consumers
     media server 2 has producer2 and consumers
     see https://mediasoup.org/documentation/v3/mediasoup/design/#architecture
@@ -94,7 +95,6 @@ export interface PingPong {
   pongWait: number
 }
 
-
 export interface Worker extends PingPong{
   id: string
   stat:{
@@ -102,7 +102,6 @@ export interface Worker extends PingPong{
   }
 }
 function deleteWorker(worker: Worker){
-  clearInterval(worker.interval)
   workers.delete(worker.id)
 }
 function getVacantWorker(){
@@ -114,14 +113,17 @@ function getVacantWorker(){
   return undefined
 }
 
-
-export interface Peer extends PingPong, MSRemotePeer{
+export interface Peer extends MSRemotePeer{
+  ws: websocket.WebSocket
+  lastReceived: number
+  lastSent: number
+  interval?: NodeJS.Timeout
   room?: Room
   worker?: Worker
   transports:string[]
 }
 function toMSRemotePeer(peer: Peer):MSRemotePeer{
-  const {ws, room, worker, interval, pongWait, ...ms} = peer
+  const {ws, lastReceived, lastSent, interval, room, worker, ...ms} = peer
   return ms
 }
 
@@ -149,24 +151,11 @@ export function setRoom(roomId: string, room: Room): void {
 
 function printExistingRooms() {
   if (rooms.size === 0) {
-    consoleLog('No existing rooms.');
+    consoleLog('No room exsit.');
   } else {
-    consoleLog('Existing rooms:', rooms);
-    /*for (const room of rooms.values()) {
-      (room.id);
-    }*/
+    consoleLog('Rooms:', Array.from(rooms.keys()));
   }
 }
-
-/*function joinRoom(roomId: string, peerId: string) {
-  const existingRoom = rooms.get(roomId);
-  if (existingRoom) {
-    consoleLog(`Exist: ${roomId}`);
-  } else {
-    consoleLog(`Creating room: ${roomId}`);
-    const room: Room = { id: roomId, peers: new Set<Peer>() };
-    rooms.set(room.id, room);
-  }*/
 
 
 function checkDeleteRoom(room?: Room){
@@ -207,9 +196,6 @@ function getPeer(id: string):Peer|undefined{
 }
 
 export function deletePeer(peer: Peer){
-  clearInterval(peer.interval)
-  peer.interval = undefined
-
   //   delete from room
   peer.room?.peers.delete(peer)
   checkDeleteRoom(peer.room)
@@ -244,6 +230,10 @@ export function deletePeer(peer: Peer){
   if (CONSOLE_DEBUG){
     const peerList = Array.from(peers.keys()).reduce((prev, cur) => `${prev} ${cur}`, '')
     consoleDebug(`Peers: ${peerList}`)
+  }
+
+  if (peer.ws.readyState === peer.ws.OPEN || peer.ws.readyState === peer.ws.CONNECTING){
+    peer.ws.close()
   }
 }
 
@@ -285,10 +275,6 @@ handlersForWorker.set('workerUpdate',(base, ws)=>{
 //-------------------------------------------------------
 //  handlers for peer
 export const handlersForPeer = new Map<MSMessageType, (base:MSMessage, peer: Peer)=>void>()
-handlersForPeer.set('ping', (msg, peer)=>{
-  sendMSMessage(msg, peer.ws)
-})
-
 
 // --------------> This is where join to the Server
 handlersForPeer.set('join',(base, peer)=>{
@@ -323,14 +309,21 @@ handlersForPeer.set('join',(base, peer)=>{
     type:'remoteUpdate',
     remotes: Array.from(peer.room.peers).map(peer => toMSRemotePeer(peer))
   };
+  peer.lastSent = Date.now()
   sendMSMessage(remoteUpdateMsg, peer.ws);
 })
 handlersForPeer.set('leave', (_base, peer)=>{
   userLog.log(`${stamp()}: ${peer.peer} left from room '${peer.room?.id}' ${peer.room?.peers.size?peer.room?.peers.size-1:'not exist'}`)
-  peer.ws.close()
   deletePeer(peer)
+  peer.ws.close()
 })
-
+handlersForPeer.set('leave_error', (_base, peer)=>{
+  if (peer.room?.peers.has(peer)){
+    console.warn(`WS for peer ${peer.peer} force closed.`)
+    mainServer.deletePeer(peer)
+  }
+})
+handlersForPeer.set('pong', (_base)=>{})
 
 export const mainServer = {
   peers,
@@ -358,6 +351,7 @@ function relayWorkerToPeer(base: MSMessage){
   const peer = peers.get(msg.peer)
   if (peer){
     consoleDebug(`W=>P ${msg.type} from ${peer.worker?.id} relayed to ${peer.peer}`)
+    peer.lastSent = Date.now()
     sendMSMessage(msg, peer.ws)
   }
 }
@@ -385,6 +379,7 @@ handlersForWorker.set('createTransport', (base, worker)=>{
     return
   }
   if (msg.transport){ peer.transports.push(msg.transport) }
+  peer.lastSent = Date.now()
   sendMSMessage(base, peer.ws)
 })
 
@@ -416,6 +411,7 @@ handlersForWorker.set('produceTransport', (base, worker)=>{
     }
     peer.producers.push({id:msg.producer, kind: msg.kind, role: msg.role})
   }
+  peer.lastSent = Date.now()
   sendMSMessage(base, peer.ws)
   remoteUpdated([peer], peer.room!)
 })
@@ -472,42 +468,81 @@ export function processPeer(){
   }
   return false
 }
+
 //--------------------------------------------------
 //  Functions to add listners to websocket
 //
-function addCommonListner(pingPong: PingPong){
+const PEER_TIMEOUT = 20*1000
+
+export function addPeerListener(peer: Peer){
+  //console.log(`addPeerListener ${peer.peer} called.`)
+  peer.ws.addEventListener('close', () =>{
+    const mp:MessageAndPeer={
+      msg:{type:'leave_error'},
+      peer
+    }
+    peerQueue.push(mp)
+  })
+  peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
+    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    peer.lastReceived = Date.now()
+    consoleDebug(`Msg ${msg.type} from ${msg.peer}`)
+    peerQueue.push({msg, peer})
+  })
+  if (peer.interval) console.error(`addPeerListner for peer ${peer.peer} called again.`)
+  peer.interval = setInterval(()=>{
+    const now = Date.now()
+    //  check last receive time
+    if (now-peer.lastReceived > PEER_TIMEOUT){
+      console.warn(`Websocket for peer ${peer.peer} has been timed out.`)
+      peer.ws.close()
+    }
+    //  send pong packet when no packet sent to peer for long time.
+    if (now-peer.lastSent > PEER_TIMEOUT/2){
+      const msg:MSMessage = {
+        type:'pong'
+      }
+      peer.lastSent = now
+      sendMSMessage(msg, peer.ws)
+    }
+  }, PEER_TIMEOUT/4)
+
+  peer.ws.addEventListener('close', ()=>{
+    if (peer.interval){
+      clearInterval(peer.interval)
+      peer.interval = undefined
+    }
+  })
+}
+
+const PING_INTERVAL = 10*1000
+function addPingPongListner(pingPong: PingPong){
   pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
   pingPong.ws.on('pong', (ev) =>{
-    pingPong.pongWait --
+    pingPong.pongWait = 0
     consoleDebug(`pong ${pingPong.pongWait}`)
   })
   pingPong.interval = setInterval(()=>{
-    if (pingPong.pongWait){
-      const id = (pingPong as Worker).id || (pingPong as Peer).peer
-      console.warn(`WS for '${id}' timed out. pong wait count = ${pingPong.pongWait}.`)
-      pingPong.ws.close()
+    if (pingPong.pongWait >= 3){
+      const id = (pingPong as Worker).id
+      console.warn(`WS for worker '${id}' timed out. pong wait count = ${pingPong.pongWait}.`)
+      pingPong.ws.terminate()
       clearInterval(pingPong.interval)
       return
     }
     pingPong.ws.ping()
+    debuglog('ping sent')
     pingPong.pongWait ++
-  }, 20 * 1000)
-}
-export function addPeerListener(peer: Peer){
-  console.log(`addPeerListener ${peer.peer} called.`)
-  addCommonListner(peer)
-  peer.ws.addEventListener('close', () =>{
-    consoleDebug(`WS for peer ${peer.peer} closed.`)
-    mainServer.deletePeer(peer)
-  })
-  peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
-    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
-    consoleDebug(`Msg ${msg.type} from ${msg.peer}`)
-    peerQueue.push({msg, peer})
+  }, PING_INTERVAL)
+  pingPong.ws.addEventListener('close', ()=>{
+    if (pingPong.interval){
+      clearInterval(pingPong.interval)
+      pingPong.interval = undefined
+    }
   })
 }
 export function addWorkerListener(worker: Worker){
-  addCommonListner(worker)
+  addPingPongListner(worker)
   worker.ws.addEventListener('close', () =>{
     consoleDebug(`WS for worker ${worker.id} closed.`)
     mainServer.deleteWorker(worker)

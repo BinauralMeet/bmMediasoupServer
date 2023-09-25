@@ -1,6 +1,7 @@
 import express from 'express';
 import {dataServer} from './DataServer/Stores'
 import {mainServer} from './mainServer'
+import {messageLoad} from './main';
 
 export const restApp = express();
 const cors = require('cors');
@@ -40,4 +41,10 @@ restApp.get('/room', function(req, res) {
 restApp.get(/\/room\/.+/g , function(req, res) {
   console.log(`get /\/room\/.+/g req: ${req.path}`)
 //  console.log(req)
+})
+
+restApp.get('/messageLoad', function(req, res) {
+  console.log(`get /messageLoad  req:${req.path}`)
+  const rv = {messageLoad}
+  res.json(rv)
 })

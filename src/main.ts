@@ -4,7 +4,7 @@ import fs from 'fs'
 import debugModule from 'debug'
 import {MSConnectMessage} from './MediaServer/MediaMessages'
 import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
-import {addDataListener, processData} from './DataServer/dataServer'
+import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
@@ -68,15 +68,16 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     sendMSMessage(msg, ws)
 
     //  create peer
-    const peer:Peer = {peer:unique, ws, producers:[], transports:[], pongWait:0}
+    const now = Date.now()
+    const peer:Peer = {peer:unique, ws, producers:[], transports:[], lastSent:now, lastReceived:now}
     mainServer.peers.set(unique, peer)
     ws.removeEventListener('message', onFirstMessage)
     addPeerListener(peer)
     consoleDebug(`${unique} connected: ${JSON.stringify(Array.from(mainServer.peers.keys()))}`)
-
   }else if (msg.type === 'dataConnect'){
     ws.removeEventListener('message', onFirstMessage)
-    addDataListener(ws)
+    const ds:DataSocket = {ws, lastReceived:Date.now()}
+    addDataListener(ds)
   }else if (msg.type === 'positionConnect'){
     ws.removeEventListener('message', onFirstMessage)
     addPositionListener(ws, msg.peer)
@@ -95,6 +96,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   }
 }
 
+export let messageLoad = 0
 
 function main() {
   Object.assign(global, {d:{mainServer, dataServer}})
@@ -138,6 +140,8 @@ function main() {
             count ++
             now = Date.now()
           }
+          messageLoad = (now - start) / INTERVAL
+
           //console.log(`Process ${count} messages.`)
           count = 0
     }, INTERVAL)
