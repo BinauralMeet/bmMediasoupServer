@@ -56,6 +56,10 @@ setcap CAP_NET_BIND_SERVICE+ep /usr/bin/turnserver
 
 /etc/init.d/coturn restart
 
+# edit /etc/security/limits.conf  to increase max number of files to open
+# *  hard  nofile  65535
+# *  soft  nofile  65535
+ulimit -n 65535
 
 # https://qiita.com/okyk/items/2d7db6b148a43bc3b405
 # https://lealog.hateblo.jp/entry/2020/03/28/124709

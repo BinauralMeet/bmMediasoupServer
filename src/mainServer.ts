@@ -2,83 +2,13 @@ import websocket from 'ws'
 import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
-import {exit, send} from 'process'
 import {userLog, stamp} from './main'
-
-
-//------------- Custom Code ------------------------
-import express from 'express';
-import { debuglog } from 'util';
-const app = express();
-const cors = require('cors');
-app.use(express.json()); // for parsing application/json
-app.use(cors()); // enable CORS
-
-// Endpoint to get a room by its ID
-app.get('/rooms/:RoomName', (req, res) => {
-  const RoomName = req.params.RoomName;
-  let foundRoom = null;
-
-  // Iterate over your rooms collection to find a match
-  for (let room of rooms.values()) {
-    if (room.RoomName === RoomName) {
-      foundRoom = room;
-      break;
-    }
-  }
-
-  if (foundRoom) {
-    res.json(foundRoom);
-  } else {
-    res.status(404).json({ error: 'Room not found' });
-  }
-})
-
-
-// Endpoint to create a new room
-app.post('/rooms', (req, res) => {
-  // TODO: Validate the request body to make sure it has the correct format
-  const newRoom = req.body;
-  rooms.set(newRoom.id, newRoom);
-  res.status(201).json(newRoom);
-});
-
-
-app.post('/checkPassword', (req, res) => {
-  const { roomId, password } = req.body;
-  console.log('Received:', { roomId, password });
-
-  const room = getRoomById(roomId);
-  console.log('Room:', rooms);
-
-  if (!room) {
-    return res.status(404).json({ error: rooms });
-  }
-
-  if (room.RoomPassword !== password) {
-    console.log('Password mismatch:', { entered: password, actual: room.RoomPassword });
-    return res.status(401).json({ error: 'Password is incorrect' });
-  }
-
-  // If everything checks out, return a 200 status code with room details
-  return res.status(200).json(room);
-});
-
-
-
-
-// [3200 is the port for REST]
-// TODO: Add more endpoints to update and delete rooms, if necessary
-app.listen(3200, () => console.log('REST listening on port 3200'))
-//------------- Custom Code ------------------------
-
-
+import { debug } from 'console'
 
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
-
 /*
     main server only for signaling
       knows peers=endpoints, rooms, producers and consumers
@@ -149,15 +79,6 @@ export function setRoom(roomId: string, room: Room): void {
   rooms.set(roomId, room);
 }
 
-function printExistingRooms() {
-  if (rooms.size === 0) {
-    consoleLog('No room exsit.');
-  } else {
-    consoleLog('Rooms:', Array.from(rooms.keys()));
-  }
-}
-
-
 function checkDeleteRoom(room?: Room){
   if (room && room.peers.size === 0){
     rooms.delete(room.id)
@@ -180,7 +101,7 @@ function getPeerAndWorker(id: string){
   const peer = peers.get(id)
   if (!peer) {
     consoleError(`Peer ${id} not found.`)
-    exit()
+    return undefined
   }
   if (!peer.worker) peer.worker = getVacantWorker()
   return peer
@@ -218,7 +139,7 @@ export function deletePeer(peer: Peer){
       type: 'closeTransport',
       transport,
     }
-    console.log(`Send ${msg.type} for ${msg.transport}`)
+    consoleDebug(`Send ${msg.type} for ${msg.transport}`)
     if (peer.worker?.ws){
       sendMSMessage(msg, peer.worker.ws)
     }
@@ -281,10 +202,6 @@ handlersForPeer.set('join',(base, peer)=>{
   const msg = base as MSPeerMessage;
   const join = base as MSRoomJoinMessage;
   let room = rooms.get(join.room);
-
-  printExistingRooms(); //Print me all the existing rooms.
-  //consoleLog("Room Object Info: ", room)
-
   if (room?.peers) {
     room.peers.add(peer)
   }else{
@@ -317,9 +234,10 @@ handlersForPeer.set('leave', (_base, peer)=>{
   deletePeer(peer)
   peer.ws.close()
 })
-handlersForPeer.set('leave_error', (_base, peer)=>{
+handlersForPeer.set('leave_error', (base, peer)=>{
   if (peer.room?.peers.has(peer)){
-    console.warn(`WS for peer ${peer.peer} force closed.`)
+    const msg = base as any
+    console.warn(`Peer ${peer.peer} left by error. RTC websocket closed. code:${msg.code} reason:${msg.reason}`)
     mainServer.deletePeer(peer)
   }
 })
@@ -340,7 +258,7 @@ export const mainServer = {
 function relayPeerToWorker(base: MSMessage){
   const msg = base as MSPeerMessage
   const remoteOrPeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
-  if (remoteOrPeer.worker){
+  if (remoteOrPeer?.worker){
     consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrPeer.worker.id}`)
     const {remote, ...msg_} = msg
     sendMSMessage(msg_, remoteOrPeer.worker.ws)
@@ -476,11 +394,12 @@ const PEER_TIMEOUT = 20*1000
 
 export function addPeerListener(peer: Peer){
   //console.log(`addPeerListener ${peer.peer} called.`)
-  peer.ws.addEventListener('close', () =>{
+  peer.ws.addEventListener('close', (ev) =>{
     const mp:MessageAndPeer={
       msg:{type:'leave_error'},
       peer
     }
+    Object.assign(mp.msg, {code: ev.code, reason: ev.reason})
     peerQueue.push(mp)
   })
   peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
@@ -531,7 +450,7 @@ function addPingPongListner(pingPong: PingPong){
       return
     }
     pingPong.ws.ping()
-    debuglog('ping sent')
+    consoleDebug('ping sent')
     pingPong.pongWait ++
   }, PING_INTERVAL)
   pingPong.ws.addEventListener('close', ()=>{

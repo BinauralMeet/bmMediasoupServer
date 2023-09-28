@@ -293,7 +293,10 @@ messageHandlers.set(MessageType.PARTICIPANT_LEFT, onParticipantLeft)
 messageHandlers.set(MessageType.PARTICIPANT_LEFT_BY_ERROR, (msg, from, room) => {
   if (from && room){
     if (room.participantsMap.has(from.id)){
-      console.warn(`Participant ${from.id} left by an error on data socket.`)
+      const cause = JSON.parse(msg.v)
+      console.warn(`Participant ${from.id} left by error.`
+        + ` ${cause.errorType} code:${cause.code} reason:${cause.reason}`)
+      msg.v=JSON.stringify([from.id])
       onParticipantLeft(msg, from, room)
     }
   }
@@ -325,24 +328,6 @@ messageHandlers.set(MessageType.CONTENT_REMOVE_REQUEST, (msg, from, room) => {
   const cids = JSON.parse(msg.v) as string[]
   room.removeContents(cids, from)
 })
-
-const CONNECTION_CHECK_INTERVAL = 30 * 1000   //  Check lastRecieveTime every 30 seconds.
-const CONNECTION_TIMEOUT = 3 * 60 * 1000      //  Timeout in 3 minutes.
-
-setInterval(()=>{
-  const now = Date.now()
-  for(const room of rooms.rooms.values()){
-    const timeouts = room.participants.filter(p => p.lastReceiveTime + CONNECTION_TIMEOUT < now)
-    for(const p of timeouts){
-      const msg = p.storedMessages.get(MessageType.PARTICIPANT_INFO)
-      const name = msg ? JSON.parse(msg.v)?.name : undefined
-      console.log(`Participant ${p.id}:${name ? `"${name}"` : 'undefined'} left by connection lost detected by server. ${room.participants.length} remain in "${room.id}".`)
-      p.socket.close(1002, `Closed by server. No packet during ${CONNECTION_TIMEOUT/1000} sec.`)
-      room.onParticipantLeft(p)
-    }
-  }
-}, CONNECTION_CHECK_INTERVAL)
-
 
 //--------------------------------------------------
 //  Message queue and message handling
@@ -378,8 +363,6 @@ export function processData():boolean{
       participant = rp?.participant
     }
 
-    if (participant) participant.lastReceiveTime = Date.now()
-
     //  call handler
     const handler = messageHandlers.get(top.msg.t)
     if (handler){
@@ -404,12 +387,13 @@ export function addDataListener(ds:DataSocket){
     }
   })
 
-  if (ds.interval) console.error(`DataSocket ${ds.ws} already has a interval timer.`)
+  if (ds.interval) console.error(`DataSocket ${ds.ws.url} already has a interval timer.`)
   const TIMEOUT = 10 * 1000
   ds.interval = setInterval(()=>{
     if (ds.lastReceived + TIMEOUT < Date.now()){
-      console.warn(`DataSocket ${ds.ws} timeout.`)
-      ds.ws.close() //  timeout
+      const pAndR = rooms.sockMap.get(ds.ws)
+      console.warn(`Data websocket for ${pAndR?.participant.id} timed out.`)
+      ds.ws.close(1007, 'timeout by server') //  timeout
     }
   }, TIMEOUT/2)
 
@@ -420,7 +404,11 @@ export function addDataListener(ds:DataSocket){
     }
     const msg:Message = {
       t:MessageType.PARTICIPANT_LEFT_BY_ERROR,
-      v:JSON.stringify([]),
+      v:JSON.stringify({
+        errorType: 'websocket closed',
+        code:ev.code,
+        reason: ev.reason
+      }),
     }
     const dAndWs: DataAndWs = {
       msg,

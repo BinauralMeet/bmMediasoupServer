@@ -128,22 +128,19 @@ function main() {
                     `https://${config.httpIp}:${config.httpPort}`);
         //  Start process to handle queued messages
         const INTERVAL = 100
-        let count=0
         setInterval(()=>{
           const start = Date.now()
           let now = start
           while(now - start < INTERVAL/2){
-            let processed = processWorker()
+            let processed = processData()
+            processed ||= processWorker()
             if (!processed) processed = processPeer()
-            if (!processed) processed = processData()
             if (!processed) break
-            count ++
             now = Date.now()
           }
           messageLoad = (now - start) / INTERVAL
-
-          //console.log(`Process ${count} messages.`)
-          count = 0
+          //utilization = performance.eventLoopUtilization(utilization)
+          //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
     }, INTERVAL)
 
         resolve();

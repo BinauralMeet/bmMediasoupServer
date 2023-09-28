@@ -2,6 +2,7 @@ import express from 'express';
 import {dataServer} from './DataServer/Stores'
 import {mainServer} from './mainServer'
 import {messageLoad} from './main';
+import {performance} from 'perf_hooks'
 
 export const restApp = express();
 const cors = require('cors');
@@ -39,12 +40,26 @@ restApp.get('/room', function(req, res) {
 })
 
 restApp.get(/\/room\/.+/g , function(req, res) {
-  console.log(`get /\/room\/.+/g req: ${req.path}`)
-//  console.log(req)
+  const roomId = req.path.substring(6)
+  console.log(`get /\/room\/.+/g req: ${req.path} room:${roomId}`)
+
+  const droom = dataServer.rooms.rooms.get(roomId)
+  const rroom = mainServer.rooms.get(roomId)
+  const peerKeys = rroom?.peers.keys()
+  const peerIds = peerKeys ? Array.from(peerKeys).map(p=>p.peer) : []
+  const contentKeys = droom?.contents.keys()
+  const contentIds = contentKeys ? Array.from(contentKeys) : []
+  res.json({
+    peers: peerIds,
+    participants:droom?.participants.map(p => p.id),
+    contents:contentIds
+  })
 })
 
-restApp.get('/messageLoad', function(req, res) {
-  console.log(`get /messageLoad  req:${req.path}`)
-  const rv = {messageLoad}
+restApp.get('/load', function(req, res) {
+  console.log(`get /load  req:${req.path}`)
+  const utilization = performance.eventLoopUtilization()
+  //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
+  const rv = {...utilization, messageLoad}
   res.json(rv)
 })
