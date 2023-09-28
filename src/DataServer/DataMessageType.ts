@@ -70,5 +70,6 @@ export const MessageType = {
   PARTICIPANT_LEFT_BY_ERROR: 'm_participant_left_error',       //  id:string
   ROOM_PROP:  'room_prop',                      //  [name:string, value:string], set room property
   REQUEST_TO: 'req_to',                         //  ids:string[], request for info of specific participant
+  PONG: 'o',                                    //  pong message
 }
 export type MessageKeys = keyof typeof MessageType

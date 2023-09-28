@@ -88,6 +88,9 @@ messageHandlers.set(MessageType.REQUEST_ALL, (_msg, from, room) => {
   from.sendMessages()
 })
 
+messageHandlers.set(MessageType.PONG, (_msg) => {})
+
+
 function pushParticipantsInRangeOrMovedOut(from:ParticipantStore, room:RoomStore, visible:number[], audible:number[]){
   //  Push participants updated and in the range.
   const overlaps = room.participants.filter(p => p.id !== from.id && (p.onStage
