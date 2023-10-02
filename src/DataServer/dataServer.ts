@@ -6,6 +6,8 @@ import {getRect, isOverlapped, isOverlappedToCircle, isInRect, isInCircle, str2M
 import {Content, messageHandlers, rooms, RoomStore, ParticipantStore, createContentSent, updateContentSent} from './Stores'
 import websocket from 'ws'
 
+const config = require('../../config')
+
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 
@@ -391,7 +393,7 @@ export function addDataListener(ds:DataSocket){
   })
 
   if (ds.interval) console.error(`DataSocket ${ds.ws.url} already has a interval timer.`)
-  const TIMEOUT = 10 * 1000
+  const TIMEOUT = config.websocketTimeout
   ds.interval = setInterval(()=>{
     if (ds.lastReceived + TIMEOUT < Date.now()){
       const pAndR = rooms.sockMap.get(ds.ws)

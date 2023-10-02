@@ -3,7 +3,7 @@ import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {userLog, stamp} from './main'
-import { debug } from 'console'
+const config = require('../config');
 
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
@@ -390,7 +390,7 @@ export function processPeer(){
 //--------------------------------------------------
 //  Functions to add listners to websocket
 //
-const PEER_TIMEOUT = 20*1000
+const PEER_TIMEOUT = config.websocketTimeout
 
 export function addPeerListener(peer: Peer){
   //console.log(`addPeerListener ${peer.peer} called.`)
@@ -434,7 +434,7 @@ export function addPeerListener(peer: Peer){
   })
 }
 
-const PING_INTERVAL = 10*1000
+const PING_INTERVAL = config.websocketTimeout / 3
 function addPingPongListner(pingPong: PingPong){
   pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
   pingPong.ws.on('pong', (ev) =>{

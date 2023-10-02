@@ -2,10 +2,12 @@ const announcedIp='vrc.jp'
 
 module.exports = {
 
-  //----------------------------------------------------------
-  //  For Main server
-  //----------------------------------------------------------
+  websocketTimeout: 15 * 1000,  //  Web sockets will be disconnected when no pakect received in 15 second
 
+  //===========================================================================
+  //  For Main server
+  //
+  //
   //  Main server's http server ip, port
   //  For Deploy ---------------------------------------------
   //httpIp: "main.titech.binaural.me",  //  ip to listen
@@ -15,19 +17,16 @@ module.exports = {
   httpPort: 3100,                       //  port to listen
   //----------------------------------------------------------
 
-  //  peer timeout constant
-  httpPeerStale: 15000,
   //  Path to certs
   sslCrt: './certs/fullchain.pem',
   sslKey: './certs/privkey.pem',
 
-  //----------------------------------------------------------
 
 
-  //----------------------------------------------------------
+  //===========================================================================
   //  For Media server
-  //----------------------------------------------------------
-
+  //
+  //
   //  url to main server
   mainServer: "wss://localhost:3100", //  url to the main server FOR DEOPLOY
   //mainServer: "wss://main.titech.binaural.me", //  url to the main server FOR DEBUG

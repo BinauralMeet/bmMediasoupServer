@@ -308,8 +308,8 @@ startMediasoup().then(({worker, router}) => {
   }
 
   lastPingTimestamp = Date.now()
-  consoleLog('connecting to main server');
-  const TIMEOUT = 30 * 1000
+  consoleLog('connecting to main server')
+  const TIMEOUT = config.websocketTimeout
   setInterval(()=>{
     if (ws.readyState === ws.OPEN){
       if (lastPingTimestamp + TIMEOUT < Date.now()){
