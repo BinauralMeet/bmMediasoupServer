@@ -23,8 +23,8 @@ yarn
 yarn build
 emacs ./dist/config.js  # edit config file to enable sections for Deploy instead of Debug.
 yarn global add pm2
-#pm2 start dist/src/main.js --log-date-format 'MM-DD HH:mm:ss.SSS'
-pm2 start dist/src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS'
+#pm2 start dist/src/main.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bm
+pm2 start dist/src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bmm
 pm2 save
 ln -s /root/.pm2/logs /var/log/pm2
 
@@ -37,6 +37,30 @@ ufw allow 40000:49999/udp
 apt-get install certbot
 # get cert
 certbot certonly
+
+# add script to certbot's env
+# --------------------------------------------------------------------
+# for media server
+echo \#\!/bin/bash > /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
+echo /etc/init.d/coturn stop >> /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
+echo /etc/init.d/nginx start >> /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
+chmod 777 /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
+echo \#\!/bin/bash > /etc/letsencrypt/renewal-hooks/post/startturn.sh
+echo /etc/init.d/nginx stop >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
+echo /etc/init.d/coturn start >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
+chmod 777 /etc/letsencrypt/renewal-hooks/post/startturn.sh
+# --------------------------------------------------------------------
+# for main server
+# echo \#\!/bin/bash > /etc/letsencrypt/renewal-hooks/pre/stopbm.sh
+# echo `which pm2` stop bm >> /etc/letsencrypt/renewal-hooks/pre/stopbm.sh
+# echo /etc/init.d/nginx start >> /etc/letsencrypt/renewal-hooks/pre/stopbm.sh
+# chmod 777 /etc/letsencrypt/renewal-hooks/pre/stopbm.sh
+# echo \#\!/bin/bash > /etc/letsencrypt/renewal-hooks/post/startbm.sh
+# echo /etc/init.d/nginx stop >> /etc/letsencrypt/renewal-hooks/post/startbm.sh
+# echo `which pm2` start bm >> /etc/letsencrypt/renewal-hooks/post/startbm.sh
+# chmod 777 /etc/letsencrypt/renewal-hooks/post/startbm.sh
+# --------------------------------------------------------------------
+
 
 #install coturn
 apt-get install coturn

@@ -417,7 +417,7 @@ export function addPeerListener(peer: Peer){
       peer.ws.close()
     }
     //  send pong packet when no packet sent to peer for long time.
-    if (now-peer.lastSent > PEER_TIMEOUT/2){
+    if (now-peer.lastSent > PEER_TIMEOUT/4){
       const msg:MSMessage = {
         type:'pong'
       }
