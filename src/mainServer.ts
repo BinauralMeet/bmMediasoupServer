@@ -434,7 +434,7 @@ export function addPeerListener(peer: Peer){
   })
 }
 
-const PING_INTERVAL = config.websocketTimeout / 3
+const PING_INTERVAL = config.workerWebsocketTimeout / 3
 function addPingPongListner(pingPong: PingPong){
   pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
   pingPong.ws.on('pong', (ev) =>{

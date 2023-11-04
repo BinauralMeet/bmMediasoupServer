@@ -2,8 +2,8 @@ const announcedIp='vrc.jp'
 
 module.exports = {
 
-  websocketTimeout: 60 * 1000,  //  Web sockets will be disconnected when no pakect received in 15 second
-
+  websocketTimeout: 60 * 1000,        //  Web sockets for peer will be disconnected when no pakect received in 60 second.
+  workerWebsocketTimeout: 15 * 1000,  //  Web sockets for worker uses ping-pong with 15 second timeout.
   //===========================================================================
   //  For Main server
   //
