@@ -26,6 +26,7 @@ yarn global add pm2
 #pm2 start dist/src/main.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bm
 pm2 start dist/src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bmm
 pm2 save
+pm2 startup
 ln -s /root/.pm2/logs /var/log/pm2
 
 #install certbot and let's encrypt
@@ -46,6 +47,7 @@ echo /etc/init.d/coturn stop >> /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
 echo /etc/init.d/nginx start >> /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
 chmod 777 /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
 echo \#\!/bin/bash > /etc/letsencrypt/renewal-hooks/post/startturn.sh
+echo cp /etc/letsencrypt/live/$HOSTNAME/\*.pem /etc/coturn/certs/ >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
 echo /etc/init.d/nginx stop >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
 echo /etc/init.d/coturn start >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
 chmod 777 /etc/letsencrypt/renewal-hooks/post/startturn.sh
