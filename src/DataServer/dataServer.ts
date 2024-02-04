@@ -1,21 +1,10 @@
-import {BMMessage, BMMessage as Message} from './DataMessage'
+import {BMMessage as Message} from './DataMessage'
 import {extractSharedContentInfo, ISharedContent, isEqualSharedContentInfo} from './ISharedContent'
 import {MessageType, InstantMessageType, StoredMessageType, InstantMessageKeys, StoredMessageKeys,
   ParticipantMessageType, ParticipantMessageKeys} from './DataMessageType'
 import {getRect, isOverlapped, isOverlappedToCircle, isInRect, isInCircle, str2Mouse, str2Pose} from './coordinates'
 import {Content, messageHandlers, rooms, RoomStore, ParticipantStore, createContentSent, updateContentSent} from './Stores'
 import websocket from 'ws'
-
-const config = require('../../config')
-
-const CONSOLE_DEBUG = false
-const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
-
-export interface DataSocket{
-  ws: websocket.WebSocket
-  interval?: NodeJS.Timeout
-  lastReceived: number
-}
 
 function instantMessageHandler(msg: Message, from:ParticipantStore, room: RoomStore){
   //  send message to destination or all remotes
@@ -89,9 +78,6 @@ messageHandlers.set(MessageType.REQUEST_ALL, (_msg, from, room) => {
   //console.log('Reply REQUEST_ALL')
   from.sendMessages()
 })
-
-messageHandlers.set(MessageType.PONG, (_msg) => {})
-
 
 function pushParticipantsInRangeOrMovedOut(from:ParticipantStore, room:RoomStore, visible:number[], audible:number[]){
   //  Push participants updated and in the range.
@@ -269,16 +255,14 @@ messageHandlers.set(MessageType.REQUEST_TO, (msg, from, room) => {
   }
 })
 
-function onParticipantLeft(msg: BMMessage, from: ParticipantStore, room: RoomStore){
-  //console.log(`${JSON.stringify(msg)}`)
+messageHandlers.set(MessageType.PARTICIPANT_LEFT, (msg, from, room) => {
+  //  console.log(`${JSON.stringify(msg)}`)
   let pids = JSON.parse(msg.v) as string[]
   if (!msg.v || pids.length === 0){ pids = [from.id] }
   for(const pid of pids){
     const participant = room.participantsMap.get(pid)
-    if (participant){
-      if (participant.socket.readyState !== websocket.WebSocket.CLOSED){
-        participant.socket.close(1000, 'closed by PARTICIPANT_LEFT message.')
-      }
+    if (participant && participant.socket.readyState !== websocket.WebSocket.CLOSED){
+      participant.socket.close(1000, 'closed by PARTICIPANT_LEFT message.')
       room.onParticipantLeft(participant)
 
       //console.log(`states: ${JSON.stringify(Array.from(participant.participantStates.values()))}`)
@@ -286,29 +270,16 @@ function onParticipantLeft(msg: BMMessage, from: ParticipantStore, room: RoomSto
       const name = infoMsg ? JSON.parse(infoMsg.v).name : ''
       console.log(`Participant ${pid}:"${name}" left. ${room.participants.length} remain in "${room.id}".`)
     }else{
-      console.warn(`Received a PARTICIPANT_LEFT message for ${pid} but not found.`)
+      //  console.error(`PARTICIPANT_LEFT can not find pid=${pid}`)
     }
   }
   for(const participant of room.participants){
     const msgToSend = {t:MessageType.PARTICIPANT_LEFT, v:JSON.stringify(pids)}
     participant.pushOrUpdateMessage(msgToSend)
   }
-}
-messageHandlers.set(MessageType.PARTICIPANT_LEFT, onParticipantLeft)
-messageHandlers.set(MessageType.PARTICIPANT_LEFT_BY_ERROR, (msg, from, room) => {
-  if (from && room){
-    if (room.participantsMap.has(from.id)){
-      const cause = JSON.parse(msg.v)
-      console.warn(`Participant ${from.id} left by error.`
-        + ` ${cause.errorType} code:${cause.code} reason:${cause.reason}`)
-      msg.v=JSON.stringify([from.id])
-      onParticipantLeft(msg, from, room)
-    }
-  }
 })
 
 messageHandlers.set(MessageType.CONTENT_UPDATE_REQUEST, (msg, from, room) => {
-  //console.log(JSON.stringify(msg))
   const cs = JSON.parse(msg.v) as ISharedContent[]
   const time = room.tick
   for(const newContent of cs){
@@ -334,91 +305,74 @@ messageHandlers.set(MessageType.CONTENT_REMOVE_REQUEST, (msg, from, room) => {
   room.removeContents(cids, from)
 })
 
-//--------------------------------------------------
-//  Message queue and message handling
-interface DataAndWs{
-  msg: Message,
-  ws: websocket.WebSocket
-}
-const dataQueue = new Array<DataAndWs>
-export function processData():boolean{
-  const top = dataQueue.shift()
-  if (top){ //  peer
-    if (!top.msg.t){
-      console.error(`Invalid message: ${top.msg}`)
-    }
+const CONNECTION_CHECK_INTERVAL = 30 * 1000   //  Check lastRecieveTime every 30 seconds.
+const CONNECTION_TIMEOUT = 3 * 60 * 1000      //  Timeout in 3 minutes.
 
-    //  prepare participant and room
-    let participant:ParticipantStore|undefined
-    let room:RoomStore|undefined
-    if (top.msg.r && top.msg.p){
-      //  create room and participant
-      room = rooms.get(top.msg.r)
-      participant = room.getParticipant(top.msg.p, top.ws)
-      if (participant.socket !== top.ws){
-        console.log(`Remove old participant with the same id '${participant.id}'.`)
-        room.onParticipantLeft(participant)
-        participant = room.getParticipant(top.msg.p, top.ws)
-      }
-      rooms.sockMap.set(top.ws, {room, participant})
-      consoleDebug(`Participant ${participant.id} joined. ${room.participants.length} people in "${room.id}".`)
-    }else{
-      const rp = rooms.sockMap.get(top.ws)
-      room = rp?.room
-      participant = rp?.participant
+setInterval(()=>{
+  const now = Date.now()
+  for(const room of rooms.rooms.values()){
+    const timeouts = room.participants.filter(p => p.lastReceiveTime + CONNECTION_TIMEOUT < now)
+    for(const p of timeouts){
+      const msg = p.storedMessages.get(MessageType.PARTICIPANT_INFO)
+      const name = msg ? JSON.parse(msg.v)?.name : undefined
+      console.log(`Participant ${p.id}:${name ? `"${name}"` : 'undefined'} left by connection lost detected by server. ${room.participants.length} remain in "${room.id}".`)
+      p.socket.close(1002, `Closed by server. No packet during ${CONNECTION_TIMEOUT/1000} sec.`)
+      room.onParticipantLeft(p)
     }
-
-    //  call handler
-    const handler = messageHandlers.get(top.msg.t)
-    if (handler){
-      handler(top.msg, participant!, room!)
-    }else{
-      console.error(`No message handler for ${top.msg.t} - ${top.msg}`)
-    }
-    return true
   }
-  return false
-}
+}, CONNECTION_CHECK_INTERVAL)
 
-//--------------------------------------------------
-//  Functions to add listners to websocket
-//
-export function addDataListener(ds:DataSocket){
-  ds.ws.addEventListener('message', (ev: websocket.MessageEvent) => {
-    ds.lastReceived = Date.now()
+export function addDataListener(ws: websocket.WebSocket){
+  console.log(`addDataListener called ${ws.url}`)
+  ws.addEventListener('message', (ev: websocket.MessageEvent) => {
     const msgs = JSON.parse(ev.data.toString()) as Message[]
-    if (msgs.length){
-      dataQueue.push(...msgs.map(msg => ({msg, ws:ds.ws})))
+    for(const msg of msgs){
+      //  if (msg.t !== MessageType.REQUEST_RANGE && msg.t !== MessageType.PARTICIPANT_MOUSE){ console.log('ws:', ev); }
+      if (!msg.t){
+        console.error(`Invalid message: ${msg}`)
+      }
+
+      //  prepare participant and room
+      let participant:ParticipantStore
+      let room:RoomStore
+      if (msg.r && msg.p){
+        //  create room and participant
+        room = rooms.get(msg.r)
+        participant = room.getParticipant(msg.p, ws)
+        if (participant.socket !== ws){
+          console.log(`Remove old participant with the same id '${participant.id}'.`)
+          room.onParticipantLeft(participant)
+          participant = room.getParticipant(msg.p, ws)
+        }
+        rooms.sockMap.set(ws, {room, participant})
+        console.log(`Participant ${participant.id} joined. ${room.participants.length} people in "${room.id}".`)
+      }else{
+        const rp = rooms.sockMap.get(ws)!
+        room = rp.room
+        participant = rp.participant
+      }
+
+      participant.lastReceiveTime = Date.now()
+
+      //  call handler
+      const handler = messageHandlers.get(msg.t)
+      if (handler){
+        handler(msg, participant, room)
+      }else{
+        console.error(`No message handler for ${msg.t} - ${msg}`)
+      }
     }
   })
-
-  if (ds.interval) console.error(`DataSocket ${ds.ws.url} already has a interval timer.`)
-  const TIMEOUT = config.websocketTimeout
-  ds.interval = setInterval(()=>{
-    if (ds.lastReceived + TIMEOUT < Date.now()){
-      const pAndR = rooms.sockMap.get(ds.ws)
-      console.warn(`Data websocket for ${pAndR?.participant.id} timed out.`)
-      ds.ws.close(1007, 'timeout by server') //  timeout
+  ws.addEventListener('close', (ev)=>{
+    for(const room of rooms.rooms.values()){
+      for(const participant of room.participants.values()){
+        if (participant.socket === ws){
+          console.warn(`Participant ${participant.id} left by websocket close code:`
+            + `${ev.code}, reason:${ev.reason}.`);
+          room.onParticipantLeft(participant)
+          return
+        }
+      }
     }
-  }, TIMEOUT/2)
-
-  ds.ws.addEventListener('close', (ev)=>{
-    if (ds.interval){
-      clearInterval(ds.interval)
-      ds.interval = undefined
-    }
-    const msg:Message = {
-      t:MessageType.PARTICIPANT_LEFT_BY_ERROR,
-      v:JSON.stringify({
-        errorType: 'websocket closed',
-        code:ev.code,
-        reason: ev.reason
-      }),
-    }
-    const dAndWs: DataAndWs = {
-      msg,
-      ws:ds.ws
-    }
-    dataQueue.push(dAndWs)
   })
 }

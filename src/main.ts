@@ -2,15 +2,11 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSConnectMessage} from './MediaServer/MediaMessages'
-import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
-import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
-import {dataServer} from './DataServer/Stores'
-import {addPositionListener} from './PositionServer/positionServer'
-import {restApp} from './rest'
-import {Console} from 'console'
-
-
+import {MSPeerMessage, MSConnectMessage, MSAuthMessage} from './MediaServer/MediaMessages'
+import {PingPong, Worker, Peer, mainServer, sendMSMessage} from './mainServer'
+import {addDataListener} from './DataServer/dataServer'
+import { addPositionListener } from './PositionServer/positionServer'
+import { GoogleDriveAuth } from "./GoogleDriveAuth";
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
 
@@ -18,14 +14,6 @@ const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
-
-const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', {flags:'a', encoding:'utf8'});
-export const userLog = new Console(userLogFile)
-export function stamp(){
-  const date = new Date()
-  return `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}, `
-    + `${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}:${date.getSeconds().toString().padStart(2,'0')}.${date.getMilliseconds().toString().padStart(3,'0')}`
-}
 
 //--------------------------------------------------
 //  utilities
@@ -42,42 +30,109 @@ function makeUniqueId(id:string, map: Map<string, any>){
 }
 
 
-
 //--------------------------------------------------
-//  First websocket message handler
+//  Websocket message handlers
+function addCommonListner(pingPong: PingPong){
+  pingPong.ws.on('ping', () =>{ pingPong.ws.pong() })
+  pingPong.ws.on('pong', (ev) =>{
+    pingPong.pongWait --
+    consoleDebug(`pong ${pingPong.pongWait}`)
+  })
+  pingPong.interval = setInterval(()=>{
+    if (pingPong.pongWait){
+      const id = (pingPong as Worker).id || (pingPong as Peer).peer
+      console.warn(`WS for '${id}' timed out. pong wait count = ${pingPong.pongWait}.`)
+      pingPong.ws.close()
+      clearInterval(pingPong.interval)
+      return
+    }
+    pingPong.ws.ping()
+    pingPong.pongWait ++
+  }, 20 * 1000)
+}
+function addPeerListener(peer: Peer){
+  console.log(`addPeerListener ${peer.peer} called.`)
+  addCommonListner(peer)
+  peer.ws.addEventListener('close', () =>{
+    consoleDebug(`WS for peer ${peer.peer} closed.`)
+    mainServer.deletePeer(peer)
+  })
+  peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
+    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    const handler = mainServer.handlersForPeer.get(msg.type)
+    if (handler){
+      handler(msg, peer)
+    }else{
+      console.warn(`Unhandle peer message ${msg.type} received from ${msg.peer}`)
+    }
+  })
+}
+function addWorkerListener(worker: Worker){
+  addCommonListner(worker)
+  worker.ws.addEventListener('close', () =>{
+    consoleDebug(`WS for worker ${worker.id} closed.`)
+    mainServer.deleteWorker(worker)
+  })
+  worker.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
+    const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
+    const handler = mainServer.handlersForWorker.get(msg.type)
+    if (handler){
+      handler(msg, worker)
+    }else{
+      console.warn(`Unhandle workder message ${msg.type} received from ${msg.peer}`)
+    }
+  })
+}
+
 //  After connection, this handler judge kind of the websocket and add appropriate handlers.
 function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
-
-  //Here makes the connection to the WS
-  if (msg.type === 'connect'){
+  console.log(`PeerMsg ${msg.type} from ${msg.peer}`);
+  if(msg.type === 'auth'){
+    console.log('auth called')
+    const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
+    // check with google drive json file
+    const gd = new GoogleDriveAuth();
+    gd.login().then((logined) => {
+      console.log('ad login')
+      // room_settings.json https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view?usp=sharing
+      const gfileid = "XXXXXXXXXXXXXXXXXXXXXXX"
+      gd.dowloadJsonFile(gfileid).then((roomData) => {
+        console.log(roomData)
+        gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((res) => {
+          if (!res){
+            msg.error = 'auth error'
+          }
+          console.log(msg)
+          sendMSMessage(msg, ws)
+          console.log("auth finised")
+        })
+      })
+    })
+  } else if (msg.type === 'connect'){
     let unique = ''
     let justBefore
-
     if (msg.peerJustBefore && (justBefore = mainServer.peers.get(msg.peerJustBefore))) {
       mainServer.deletePeer(justBefore)
       consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
         `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
       unique = makeUniqueId(justBefore.peer, mainServer.peers)
-    } else {
+    }else{
       unique = makeUniqueId(msg.peer, mainServer.peers)
     }
     msg.peer = unique
     sendMSMessage(msg, ws)
-
     //  create peer
-    const now = Date.now()
-    const peer:Peer = {peer:unique, ws, producers:[], transports:[], lastSent:now, lastReceived:now}
+    const peer:Peer = {peer:unique, ws, producers:[], transports:[], pongWait:0}
     mainServer.peers.set(unique, peer)
     ws.removeEventListener('message', onFirstMessage)
     addPeerListener(peer)
     consoleDebug(`${unique} connected: ${JSON.stringify(Array.from(mainServer.peers.keys()))}`)
   }else if (msg.type === 'dataConnect'){
     ws.removeEventListener('message', onFirstMessage)
-    const ds:DataSocket = {ws, lastReceived:Date.now()}
-    addDataListener(ds)
+    addDataListener(ws)
   }else if (msg.type === 'positionConnect'){
     ws.removeEventListener('message', onFirstMessage)
     addPositionListener(ws, msg.peer)
@@ -96,10 +151,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   }
 }
 
-export let messageLoad = 0
-
 function main() {
-  Object.assign(global, {d:{mainServer, dataServer}})
   // start https server
   consoleLog('starting wss server');
   try {
@@ -113,10 +165,6 @@ function main() {
     });
 
     const wss = new websocket.Server({server: httpsServer})
-    httpsServer.on('request', (req, res) =>{
-      //console.log(`request: ${JSON.stringify(req.headers)}`)
-      restApp(req, res)
-    })
     wss.on('connection', ws => {
       consoleDebug(`onConnection() `)
       ws.addEventListener('message', onFirstMessage)
@@ -126,23 +174,6 @@ function main() {
       httpsServer.listen(config.httpPort, config.httpIp, () => {
         consoleLog(`server is running and listening on ` +
                     `https://${config.httpIp}:${config.httpPort}`);
-        //  Start process to handle queued messages
-        const INTERVAL = 100
-        setInterval(()=>{
-          const start = Date.now()
-          let now = start
-          while(now - start < INTERVAL/2){
-            let processed = processData()
-            processed ||= processWorker()
-            if (!processed) processed = processPeer()
-            if (!processed) break
-            now = Date.now()
-          }
-          messageLoad = (now - start) / INTERVAL
-          //utilization = performance.eventLoopUtilization(utilization)
-          //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
-    }, INTERVAL)
-
         resolve();
       });
     })

@@ -5,28 +5,23 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage,
    MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage,
    MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage,
-   MSStreamingStartMessage, MSStreamingStopMessage, MSCloseTransportMessage} from './MediaServer/MediaMessages'
+   MSStreamingStartMessage, MSStreamingStopMessage} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
-import { Router } from 'mediasoup/node/lib/Router'
-import { debuglog } from 'util'
 
 const log = debugModule('bmMsE');
 const warn = debugModule('bmMsE:WARN');
 const err = debugModule('bmMsE:ERROR');
 const config = require('../config');
 
-
-const CONSOLE_DEBUG = false
-const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
+//  const consoleDebug = console.debug
+const consoleDebug = (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
 
 let ws = new websocket.WebSocket(null)
 let workerId = ''
 let workerLoad = 0
-let lastPingTimestamp = 0
-
 const transports = new Map<string, mediasoup.types.Transport>()
 export const producers = new Map<string, mediasoup.types.Producer>()
 const consumers = new Map<string, mediasoup.types.Consumer>()
@@ -42,14 +37,6 @@ const hostinfo={
 // start mediasoup
 consoleLog('starting mediasoup')
 startMediasoup().then(({worker, router}) => {
-  Object.assign(global, {d:{
-      worker,
-      router,
-      transports,
-      producers,
-      consumers,
-    }}
-  )
   //  set message handlers
   handlers.set('workerAdd',(base)=>{
     const msg = base as MSPeerMessage
@@ -137,21 +124,6 @@ startMediasoup().then(({worker, router}) => {
       consoleError('error in /signaling/connect-transport', e);
       sendMsg.error = `${e}`
       send(sendMsg, ws)
-    }
-  })
-  handlers.set('closeTransport', (base, ws) => {
-    const msg = base as MSCloseTransportMessage
-    try {
-      const transport = transports.get(msg.transport)
-      if (!transport) {
-        consoleError(`closetransport: server-side transport ${msg.transport} not found`)
-      }else{
-        consoleDebug(`Transport ${msg.transport} closed.`, msg)
-        transports.delete(msg.transport)
-        transport.close()
-      }
-    } catch (e) {
-      consoleError('error in /signaling/closeTransport', e);
     }
   })
 
@@ -300,27 +272,15 @@ startMediasoup().then(({worker, router}) => {
     ws.onerror = (ev)=>{
       consoleLog(`ws error ${ev.message}, state:${ws.readyState}`)
     }
-    ws.on('ping', ()=>{
-      debuglog('ping received.')
-      ws.pong()
-      lastPingTimestamp = Date.now()
-    })
   }
 
-  lastPingTimestamp = Date.now()
-  consoleLog('connecting to main server')
-  const TIMEOUT = config.workerWebsocketTimeout
+  consoleLog('connecting to main server');
   setInterval(()=>{
-    if (ws.readyState === ws.OPEN){
-      if (lastPingTimestamp + TIMEOUT < Date.now()){
-        consoleLog('Ping timeout. Terminate websocket.')
-        ws.terminate()
-      }
-    }else{
+    if (ws.readyState !== ws.OPEN){
       consoleLog('Try to connect to main server.')
       connectToMain()
     }
-  }, TIMEOUT/2)
+  }, 5000)
 })
 
 

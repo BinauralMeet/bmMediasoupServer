@@ -69,6 +69,7 @@ export interface ParticipantState{
 export class ParticipantStore {
   id: string
   socket:websocket.WebSocket
+  lastReceiveTime: number   //  Timestamp to detect connection lost
   //  participant related
   onStage = false
   storedMessages = new Map<string, Message>()   //  key=type
@@ -179,6 +180,7 @@ export class ParticipantStore {
   constructor(id:string, socket:websocket.WebSocket){
     this.id = id
     this.socket = socket
+    this.lastReceiveTime = Date.now()
   }
 }
 
@@ -193,6 +195,7 @@ export class RoomStore {
 
   constructor(roomId: string){
     this.id = roomId
+    console.log(`Room ${this.id} created.`)
   }
 
   getParticipant(pid: string, sock: websocket.WebSocket){
@@ -284,7 +287,6 @@ export class Rooms{
     }
     const create = new RoomStore(name)
     this.rooms.set(name, create)
-    console.log(`Room ${name} created. Rooms:`, Array.from(this.rooms.keys()))
     return create
   }
   clear(){
@@ -295,8 +297,3 @@ export const rooms = new Rooms();
 
 type MessageHandler = (msg: Message, participant: ParticipantStore, room: RoomStore) => void
 export const messageHandlers = new Map<string, MessageHandler>()
-
-export const dataServer = {
-  messageHandlers,
-  rooms,
-}
