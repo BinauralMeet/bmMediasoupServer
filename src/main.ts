@@ -60,7 +60,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     gd.login().then((logined) => {
       console.log('ad login')
       // room_settings.json https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view?usp=sharing
-      const gfileid = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXa"
+      const gfileid = "1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT"
       gd.dowloadJsonFile(gfileid).then((roomData) => {
         console.log(roomData)
         gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((res) => {

@@ -22,7 +22,7 @@ const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
 
-let ws = new websocket.WebSocket(null)
+let ws : websocket.WebSocket
 let workerId = ''
 let workerLoad = 0
 let lastPingTimestamp = 0
@@ -311,7 +311,7 @@ startMediasoup().then(({worker, router}) => {
   consoleLog('connecting to main server')
   const TIMEOUT = config.workerWebsocketTimeout
   setInterval(()=>{
-    if (ws.readyState === ws.OPEN){
+    if (ws && ws.readyState && ws.readyState === ws.OPEN){
       if (lastPingTimestamp + TIMEOUT < Date.now()){
         consoleLog('Ping timeout. Terminate websocket.')
         ws.terminate()
