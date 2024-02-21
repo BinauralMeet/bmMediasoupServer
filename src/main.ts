@@ -2,14 +2,14 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSConnectMessage} from './MediaServer/MediaMessages'
+import {MSConnectMessage, MSAuthMessage} from './MediaServer/MediaMessages'
 import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
 import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
 import {Console} from 'console'
-
+import { GoogleDriveAuth } from "./GoogleDriveAuth";
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
@@ -52,7 +52,28 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
 
   //Here makes the connection to the WS
-  if (msg.type === 'connect'){
+  if(msg.type === 'auth'){
+    console.log('auth called')
+    const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
+    // check with google drive json file
+    const gd = new GoogleDriveAuth();
+    gd.login().then((logined) => {
+      console.log('ad login')
+      // room_settings.json https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view?usp=sharing
+      const gfileid = "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXa"
+      gd.dowloadJsonFile(gfileid).then((roomData) => {
+        console.log(roomData)
+        gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((res) => {
+          if (!res){
+            msg.error = 'auth error'
+          }
+          console.log(msg)
+          sendMSMessage(msg, ws)
+          console.log("auth finised")
+        })
+      })
+    })
+  } else if (msg.type === 'connect'){
     let unique = ''
     let justBefore
 

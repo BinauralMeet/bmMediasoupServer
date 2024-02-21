@@ -13,7 +13,8 @@ module.exports = {
   //httpIp: "main.titech.binaural.me",  //  ip to listen
   //httpPort: 443,                      //  port to listen
   //  For Debug ----------------------------------------------
-  httpIp: "localhost",                  //  ip to listen
+  // httpIp: "localhost",                  //  ip to listen
+  httpIp: "0.0.0.0",
   httpPort: 3100,                       //  port to listen
   //----------------------------------------------------------
 
