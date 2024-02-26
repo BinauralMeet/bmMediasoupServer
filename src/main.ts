@@ -59,8 +59,8 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     const gd = new GoogleDriveAuth();
     gd.login().then((logined) => {
       console.log('ad login')
-      // room_settings.json https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view?usp=sharing
-      const gfileid = "1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT"
+      // room setting: https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view
+      const gfileid = "1ESi_VmYM43Eh9Fx1WQ_LdAd8SCXrwVJV"
       gd.dowloadJsonFile(gfileid).then((roomData) => {
         console.log(roomData)
         gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((res) => {
