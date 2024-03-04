@@ -106,19 +106,20 @@ export class GoogleServer {
         // replace the parent with the folder id you want to upload the file to
 
         // feiyang folder(test)
-        parents: ['1PqlaLr8TvJEOAurXmSHxKNWERdAWWmHt'],
+        //parents: ['1PqlaLr8TvJEOAurXmSHxKNWERdAWWmHt'],
         //Hase folder
-        //parents: ['1nNj7kGJQfDIVDfhgckNwVDhTwsBz7rza'],
+        parents: ['1nNj7kGJQfDIVDfhgckNwVDhTwsBz7rza'],
       };
       const media = {
         mimeType: 'image/jpeg/png/jpg',
-        body: this.bufferToStream(dataBuffer)
+        body: this.bufferToStream(dataBuffer),
       };
       const drive = google.drive({ version: "v3", auth: this._auth });
       const params = {
         resource: fileMetadata,
         media: media,
         fields: 'id',
+        supportsAllDrives:true
       };
       return new Promise((resolve, reject) => {
         let fileId = ''
