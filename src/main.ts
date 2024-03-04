@@ -2,14 +2,14 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSConnectMessage, MSAuthMessage} from './MediaServer/MediaMessages'
+import {MSConnectMessage, MSAuthMessage, MSUploadFileMessage} from './MediaServer/MediaMessages'
 import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
 import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
 import {Console} from 'console'
-import { GoogleDriveAuth } from "./GoogleDriveAuth";
+import { GoogleServer } from "./GoogleServer/GoogleServer";
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
@@ -50,16 +50,17 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
-
   //Here makes the connection to the WS
   if(msg.type === 'auth'){
     console.log('auth called')
     const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
     // check with google drive json file
-    const gd = new GoogleDriveAuth();
+    const gd = new GoogleServer();
     gd.login().then((logined) => {
       console.log('ad login')
       // room_settings.json https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view?usp=sharing
+      // https://drive.google.com/file/d/1V760zgeNKEuBper21A1qUYTOYDDN1DYx/view?usp=sharing
+      // https://drive.google.com/file/d/1ESi_VmYM43Eh9Fx1WQ_LdAd8SCXrwVJV/view?usp=sharing
       const gfileid = "1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT"
       gd.dowloadJsonFile(gfileid).then((roomData) => {
         console.log(roomData)
@@ -70,6 +71,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
           console.log(msg)
           sendMSMessage(msg, ws)
           console.log("auth finised")
+
         })
       })
     })
@@ -100,6 +102,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     const ds:DataSocket = {ws, lastReceived:Date.now()}
     addDataListener(ds)
   }else if (msg.type === 'positionConnect'){
+
     ws.removeEventListener('message', onFirstMessage)
     addPositionListener(ws, msg.peer)
   }else if (msg.type === 'workerAdd'){

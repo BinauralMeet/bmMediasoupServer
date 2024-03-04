@@ -1,9 +1,11 @@
 import websocket from 'ws'
-import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage,
+import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSAuthMessage,MSUploadFileMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {userLog, stamp} from './main'
 const config = require('../config');
+import { GoogleServer } from "./GoogleServer/GoogleServer";
+
 
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
@@ -242,6 +244,25 @@ handlersForPeer.set('leave_error', (base, peer)=>{
   }
 })
 handlersForPeer.set('pong', (_base)=>{})
+
+// handle user upload image to google drive, return the file id
+handlersForPeer.set('uploadFile', (base, peer)=>{
+  const msg = base as MSUploadFileMessage
+  const gt= new GoogleServer();
+  gt.login().then((logined) => {
+    gt.uploadFile(msg.file, msg.fileName).then((result) => {
+      if (result == 'upload error'){
+        msg.error = 'upload error'
+        msg.fileID = ''
+        sendMSMessage(msg ,peer.ws)
+      }
+      else{
+        msg.fileID = result as string
+        sendMSMessage(msg ,peer.ws)
+      }
+    })
+  })
+})
 
 export const mainServer = {
   peers,

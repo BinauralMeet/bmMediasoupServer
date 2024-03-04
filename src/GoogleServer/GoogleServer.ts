@@ -1,7 +1,9 @@
-import configGDrive from "./credentials.json";
+import configGDrive from "../credentials.json";
 import { google } from "googleapis";
+import fs  from 'fs';
+import {Readable} from 'stream';
 
-export class GoogleDriveAuth {
+export class GoogleServer {
     private _clientId: string;
     private _privateKey: string;
     private _scopes: string[];
@@ -71,6 +73,8 @@ export class GoogleDriveAuth {
         throw new Error("Error to get jsonFile");
       }
     }
+
+
     async downloadFile(fileId: string) {
       try {
         const drive = google.drive({ version: "v3", auth: this._auth });
@@ -83,6 +87,54 @@ export class GoogleDriveAuth {
         console.error("Error:", error);
         return null;
       }
+    }
+
+    private bufferToStream(buffer:any) {
+      const stream = new Readable();
+      stream.push(buffer);
+      stream.push(null); // Signifies the end of the stream
+      return stream;
+    }
+
+    async uploadFile(base64String: string, fileName_: string){
+      const base64Data = base64String.replace(/^data:([A-Za-z-+/]+);base64,/, '');
+      const fileName = fileName_;
+      const dataBuffer = Buffer.from(base64Data, 'base64');
+
+      const fileMetadata = {
+        name: fileName,
+        // replace the parent with the folder id you want to upload the file to
+
+        // feiyang folder(test)
+        parents: ['1PqlaLr8TvJEOAurXmSHxKNWERdAWWmHt'],
+        //Hase folder
+        //parents: ['1nNj7kGJQfDIVDfhgckNwVDhTwsBz7rza'],
+      };
+      const media = {
+        mimeType: 'image/jpeg/png/jpg',
+        body: this.bufferToStream(dataBuffer)
+      };
+      const drive = google.drive({ version: "v3", auth: this._auth });
+      const params = {
+        resource: fileMetadata,
+        media: media,
+        fields: 'id',
+      };
+      return new Promise((resolve, reject) => {
+        let fileId = ''
+        drive.files.create(params)
+        .then(res => {
+          if(res.data.id){
+          fileId = res.data.id
+          resolve(fileId)
+          }
+        })
+        .catch(error => {
+          console.error(error)
+          resolve("upload error")
+        });
+      });
+
     }
 
     async authorizeRoom(room: string, email: string, roomData: any): Promise<boolean>{
@@ -102,7 +154,7 @@ export class GoogleDriveAuth {
             console.log("auth success")
             resolve(true)
           } else {
-            console.log("auth failed")
+            console.log("auth failed, you don't have the right to enter the room")
             resolve(false)
           }
         }
