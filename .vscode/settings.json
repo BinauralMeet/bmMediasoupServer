@@ -3,9 +3,9 @@
   "editor.detectIndentation": true,
   "files.trimTrailingWhitespace": true,
   "editor.codeActionsOnSave": {
-    "source.fixAll.tslint": true
+    "source.fixAll.tslint": "explicit"
   },
   "tslint.packageManager": "yarn",
   "terminal.explorerKind": "external",
-  "editor.fontSize": 14
+  "editor.fontSize": 18
 }
