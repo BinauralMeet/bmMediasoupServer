@@ -2,6 +2,7 @@ import configGDrive from "../credentials.json";
 import { google } from "googleapis";
 import fs  from 'fs';
 import {Readable} from 'stream';
+import e from "express";
 
 export class GoogleServer {
     private _clientId: string;
@@ -138,27 +139,51 @@ export class GoogleServer {
 
     }
 
-    async authorizeRoom(room: string, email: string, roomData: any): Promise<boolean>{
-      const promise = new Promise<boolean>((resolve, reject) => {
-        console.log('authorizeRoom');
-        const keys = Object.keys(roomData);
-        const roomKey = room.split('_')[0] + '_'
-        const domain = email.split('@')[1]
-        console.log(keys)
-        console.log("roomKey:["+roomKey+"]")
-        console.log("domain:["+domain+"]")
-        if (!keys.includes(roomKey)) {
-          console.log("auth no need")
-          resolve(true)
-        } else {
-          if(roomData[roomKey].includes(domain)){
-            console.log("auth success")
-            resolve(true)
-          } else {
-            console.log("auth failed, you don't have the right to enter the room")
-            resolve(false)
+    async authorizeRoom(roomName: string, email: string, roomData: any): Promise<string>{
+      const promise = new Promise<string>((resolve, reject) => {
+      const room = roomData.rooms.find((r:any) => r.roomName === roomName);
+
+      if (!room) {
+        console.log("auth no need")
+        resolve("guest")
+      }
+      else{
+        const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
+        const isAdmin = room.admins.includes(email);
+        if(isAllowed){
+          console.log("auth need and allowed")
+          if(isAdmin){
+            console.log("user is admin")
+            resolve("admin")
+          }else{
+            console.log("user is guest")
+            resolve("guest")
           }
         }
+        else{
+          console.log("auth need but not allowed")
+          resolve("reject")
+        }
+      }
+        // console.log('authorizeRoom');
+        // const keys = Object.keys(roomData);
+        // const roomKey = room.split('_')[0] + '_'
+        // const domain = email.split('@')[1]
+        // console.log(keys)
+        // console.log("roomKey:["+roomKey+"]")
+        // console.log("domain:["+domain+"]")
+        // if (!keys.includes(roomKey)) {
+        //   console.log("auth no need")
+        //   resolve("true")
+        // } else {
+        //   if(roomData[roomKey].includes(domain)){
+        //     console.log("auth success")
+        //     resolve("true")
+        //   } else {
+        //     console.log("auth failed, you don't have the right to enter the room")
+        //     resolve("false")
+        //   }
+        // }
       });
       return promise
     }

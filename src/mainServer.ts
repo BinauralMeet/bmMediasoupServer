@@ -1,5 +1,5 @@
 import websocket from 'ws'
-import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSAuthMessage,MSUploadFileMessage,
+import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSAuthMessage,MSUploadFileMessage,MSSaveAdminInfoMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {userLog, stamp} from './main'
@@ -54,6 +54,11 @@ export interface Peer extends MSRemotePeer{
   worker?: Worker
   transports:string[]
 }
+export interface Admin{
+  email: string
+  token: string
+}
+
 function toMSRemotePeer(peer: Peer):MSRemotePeer{
   const {ws, lastReceived, lastSent, interval, room, worker, ...ms} = peer
   return ms
@@ -66,6 +71,7 @@ interface Room{
   RoomPassword: string;
   requiredLogin: boolean;
   peers: Set<Peer>;
+  admin: Set<Admin>;
 }
 
 const peers = new Map<string, Peer>()
@@ -213,7 +219,8 @@ handlersForPeer.set('join',(base, peer)=>{
       RoomOwner: join.RoomOwner,
       RoomPassword: join.RoomPassword,
       requiredLogin: join.requiredLogin,
-      peers: new Set<Peer>([peer]) // <--- The list of users in the Room
+      peers: new Set<Peer>([peer]), // <--- The list of users in the Room
+      admin: new Set<Admin>()
     }
 
     rooms.set(room.id, room);
@@ -222,7 +229,7 @@ handlersForPeer.set('join',(base, peer)=>{
 
   peer.room = room;
   userLog.log(`${stamp()}: ${peer.peer} joined to room '${join.room}' ${room.peers.size}`);
-
+  console.log("room join or setup in join message " + room.id)
   //  Notify (reply) the room's remotes
   const remoteUpdateMsg:MSRemoteUpdateMessage = {
     type:'remoteUpdate',
@@ -244,6 +251,15 @@ handlersForPeer.set('leave_error', (base, peer)=>{
   }
 })
 handlersForPeer.set('pong', (_base)=>{})
+
+handlersForPeer.set('saveAdminInfo', (base, peer)=>{
+  const msg = base as MSSaveAdminInfoMessage
+  console.log("saveAdminInfo called")
+  let room = rooms.get(msg.room);
+  const newAdmin:Admin = {email:msg.email, token:msg.token}
+  room?.admin.add(newAdmin)
+})
+
 
 // handle user upload image to google drive, return the file id
 handlersForPeer.set('uploadFile', (base, peer)=>{
