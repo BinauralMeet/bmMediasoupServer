@@ -144,24 +144,19 @@ export class GoogleServer {
       const room = roomData.rooms.find((r:any) => r.roomName === roomName);
 
       if (!room) {
-        console.log("auth no need")
         resolve("guest")
       }
       else{
         const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
         const isAdmin = room.admins.includes(email);
         if(isAllowed){
-          console.log("auth need and allowed")
           if(isAdmin){
-            console.log("user is admin")
             resolve("admin")
           }else{
-            console.log("user is guest")
             resolve("guest")
           }
         }
         else{
-          console.log("auth need but not allowed")
           resolve("reject")
         }
       }

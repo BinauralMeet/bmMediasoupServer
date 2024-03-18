@@ -1,10 +1,11 @@
 import websocket from 'ws'
-import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSAuthMessage,MSUploadFileMessage,MSSaveAdminInfoMessage,
+import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSAuthMessage,MSUploadFileMessage,MSSaveAdminInfoMessage,MSCheckAdminMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {userLog, stamp} from './main'
 const config = require('../config');
 import { GoogleServer } from "./GoogleServer/GoogleServer";
+import { send } from 'process';
 
 
 const CONSOLE_DEBUG = false
@@ -279,6 +280,30 @@ handlersForPeer.set('uploadFile', (base, peer)=>{
     })
   })
 })
+
+// check if the user is admin
+handlersForPeer.set('checkAdmin', (base, peer)=>{
+  console.log("checkAdmin called")
+  const msg = base as MSCheckAdminMessage
+  let room = rooms.get(msg.room);
+  if (room?.admin){
+    for (let admin of room.admin){
+      if (admin.email == msg.email && admin.token == msg.token){
+        console.log("Admin behavior approve")
+        msg.result = 'approve'
+        sendMSMessage(msg ,peer.ws)
+        return
+      }
+    }
+  }
+  else{
+    console.log("room not found or admin not found")
+  }
+  msg.result = 'reject'
+  sendMSMessage(msg ,peer.ws)
+  return
+})
+
 
 export const mainServer = {
   peers,

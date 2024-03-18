@@ -52,36 +52,27 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
   //Here makes the connection to the WS
   if(msg.type === 'auth'){
-    console.log('auth called')
     const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
     // check with google drive json file
     const gd = new GoogleServer();
     gd.login().then((logined) => {
-      console.log('ad login')
       // room_settings.json https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view?usp=sharing
       // https://drive.google.com/file/d/1V760zgeNKEuBper21A1qUYTOYDDN1DYx/view?usp=sharing
       // https://drive.google.com/file/d/1ESi_VmYM43Eh9Fx1WQ_LdAd8SCXrwVJV/view?usp=sharing
-      const gfileid = "17dZy1Vg-A0i8oXRjmajYyOconQtTOCDo"
+      // 長岡大: https://drive.google.com/file/d/1X5HvyMsE7pWNMtCnyM6XYMJFSGV4AaEl/view?usp=sharing
+      const gfileid = "1X5HvyMsE7pWNMtCnyM6XYMJFSGV4AaEl"
       gd.dowloadJsonFile(gfileid).then((roomData) => {
-        console.log(roomData)
         gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((role) => {
-          console.log("role in main is: " + role)
           if (!role){
             msg.error = 'auth error'
-            console.log("auth error")
           }
           else if(role === 'guest'){
             msg.role = 'guest'
-            console.log("auth guset")
           }
           else if(role === 'admin'){
             msg.role = 'admin'
-            console.log("auth admin")
           }
-          console.log(msg)
           sendMSMessage(msg, ws)
-          console.log("auth finised")
-
         })
       })
     })

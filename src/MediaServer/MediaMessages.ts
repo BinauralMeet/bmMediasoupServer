@@ -6,7 +6,7 @@ export type MSMessageType =
   'workerAdd' | 'workerDelete' | 'workerUpdate' |
   'createTransport' | 'closeTransport' | 'connectTransport' |
   'produceTransport' | 'closeProducer' | 'consumeTransport' | 'resumeConsumer' |
-  'streamingStart' | 'streamingStop' | 'uploadFile'| 'saveAdminInfo'
+  'streamingStart' | 'streamingStop' | 'uploadFile'| 'saveAdminInfo' | 'checkAdmin'
 export interface MSMessage{
   type: MSMessageType
   sn?: number
@@ -36,6 +36,14 @@ export interface MSSaveAdminInfoMessage extends MSMessage{
   token: string
   error?: string
 
+}
+
+export interface MSCheckAdminMessage extends MSMessage{
+  room: string
+  email: string
+  token: string
+  result?: string
+  role?: string
 }
 
 export interface MSConnectMessage extends MSPeerMessage{
