@@ -56,6 +56,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     // check with google drive json file
     const gd = new GoogleServer();
     gd.login().then((logined) => {
+
       gd.dowloadJsonFile().then((roomData) => {
         gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((role) => {
           if (!role){
