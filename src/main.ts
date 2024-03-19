@@ -56,12 +56,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     // check with google drive json file
     const gd = new GoogleServer();
     gd.login().then((logined) => {
-      // room_settings.json https://drive.google.com/file/d/1GuBv2tQ7OzX0JAqLIqkAxQ18FSwgzdlT/view?usp=sharing
-      // https://drive.google.com/file/d/1V760zgeNKEuBper21A1qUYTOYDDN1DYx/view?usp=sharing
-      // https://drive.google.com/file/d/1ESi_VmYM43Eh9Fx1WQ_LdAd8SCXrwVJV/view?usp=sharing
-      // 長岡大: https://drive.google.com/file/d/1X5HvyMsE7pWNMtCnyM6XYMJFSGV4AaEl/view?usp=sharing
-      const gfileid = "1X5HvyMsE7pWNMtCnyM6XYMJFSGV4AaEl"
-      gd.dowloadJsonFile(gfileid).then((roomData) => {
+      gd.dowloadJsonFile().then((roomData) => {
         gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((role) => {
           if (!role){
             msg.error = 'auth error'

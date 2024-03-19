@@ -1,8 +1,12 @@
-import configGDrive from "../credentials.json";
+//import configGDrive from "../credentials.json";
 import { google } from "googleapis";
 import fs  from 'fs';
 import {Readable} from 'stream';
 import e from "express";
+
+const config = require('../../config');
+const configGDrive = require(config.googleOAuth2Config);
+
 
 export class GoogleServer {
     private _clientId: string;
@@ -48,8 +52,9 @@ export class GoogleServer {
       }
       return this;
     }
-    async dowloadJsonFile(fileId: string) {
+    async dowloadJsonFile() {
       try {
+        const fileId = configGDrive.loginFileID
         const fileStream = await this.downloadFile(fileId);
         if (fileStream) {
           let fileContent = "";
