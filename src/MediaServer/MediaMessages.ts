@@ -6,7 +6,7 @@ export type MSMessageType =
   'workerAdd' | 'workerDelete' | 'workerUpdate' |
   'createTransport' | 'closeTransport' | 'connectTransport' |
   'produceTransport' | 'closeProducer' | 'consumeTransport' | 'resumeConsumer' |
-  'streamingStart' | 'streamingStop'
+  'streamingStart' | 'streamingStop' | 'uploadFile'| 'saveAdminInfo' | 'checkAdmin'
 export interface MSMessage{
   type: MSMessageType
   sn?: number
@@ -19,7 +19,33 @@ export interface MSAuthMessage extends MSPeerMessage{
   room: string
   email: string
   error?: string
+  role?: string
 }
+export interface MSUploadFileMessage extends MSMessage{
+  room: string
+  email?: string
+  file: string
+  error?: string
+  fileID?: string
+  fileName: string
+}
+
+export interface MSSaveAdminInfoMessage extends MSMessage{
+  room: string
+  email: string
+  token: string
+  error?: string
+
+}
+
+export interface MSCheckAdminMessage extends MSMessage{
+  room: string
+  email: string
+  token: string
+  result?: string
+  role?: string
+}
+
 export interface MSConnectMessage extends MSPeerMessage{
   peerJustBefore?: string
 }

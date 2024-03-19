@@ -1,9 +1,12 @@
 import websocket from 'ws'
-import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage,
+import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSAuthMessage,MSUploadFileMessage,MSSaveAdminInfoMessage,MSCheckAdminMessage,
   MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
   MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
 import {userLog, stamp} from './main'
 const config = require('../config');
+import { GoogleServer } from "./GoogleServer/GoogleServer";
+import { send } from 'process';
+
 
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
@@ -52,6 +55,11 @@ export interface Peer extends MSRemotePeer{
   worker?: Worker
   transports:string[]
 }
+export interface Admin{
+  email: string
+  token: string
+}
+
 function toMSRemotePeer(peer: Peer):MSRemotePeer{
   const {ws, lastReceived, lastSent, interval, room, worker, ...ms} = peer
   return ms
@@ -64,6 +72,7 @@ interface Room{
   RoomPassword: string;
   requiredLogin: boolean;
   peers: Set<Peer>;
+  admin: Set<Admin>;
 }
 
 const peers = new Map<string, Peer>()
@@ -211,7 +220,8 @@ handlersForPeer.set('join',(base, peer)=>{
       RoomOwner: join.RoomOwner,
       RoomPassword: join.RoomPassword,
       requiredLogin: join.requiredLogin,
-      peers: new Set<Peer>([peer]) // <--- The list of users in the Room
+      peers: new Set<Peer>([peer]), // <--- The list of users in the Room
+      admin: new Set<Admin>()
     }
 
     rooms.set(room.id, room);
@@ -220,7 +230,7 @@ handlersForPeer.set('join',(base, peer)=>{
 
   peer.room = room;
   userLog.log(`${stamp()}: ${peer.peer} joined to room '${join.room}' ${room.peers.size}`);
-
+  console.log("room join or setup in join message " + room.id)
   //  Notify (reply) the room's remotes
   const remoteUpdateMsg:MSRemoteUpdateMessage = {
     type:'remoteUpdate',
@@ -242,6 +252,58 @@ handlersForPeer.set('leave_error', (base, peer)=>{
   }
 })
 handlersForPeer.set('pong', (_base)=>{})
+
+handlersForPeer.set('saveAdminInfo', (base, peer)=>{
+  const msg = base as MSSaveAdminInfoMessage
+  console.log("saveAdminInfo called")
+  let room = rooms.get(msg.room);
+  const newAdmin:Admin = {email:msg.email, token:msg.token}
+  room?.admin.add(newAdmin)
+})
+
+
+// handle user upload image to google drive, return the file id
+handlersForPeer.set('uploadFile', (base, peer)=>{
+  const msg = base as MSUploadFileMessage
+  const gt= new GoogleServer();
+  gt.login().then((logined) => {
+    gt.uploadFile(msg.file, msg.fileName).then((result) => {
+      if (result == 'upload error'){
+        msg.error = 'upload error'
+        msg.fileID = ''
+        sendMSMessage(msg ,peer.ws)
+      }
+      else{
+        msg.fileID = result as string
+        sendMSMessage(msg ,peer.ws)
+      }
+    })
+  })
+})
+
+// check if the user is admin
+handlersForPeer.set('checkAdmin', (base, peer)=>{
+  console.log("checkAdmin called")
+  const msg = base as MSCheckAdminMessage
+  let room = rooms.get(msg.room);
+  if (room?.admin){
+    for (let admin of room.admin){
+      if (admin.email == msg.email && admin.token == msg.token){
+        console.log("Admin behavior approve")
+        msg.result = 'approve'
+        sendMSMessage(msg ,peer.ws)
+        return
+      }
+    }
+  }
+  else{
+    console.log("room not found or admin not found")
+  }
+  msg.result = 'reject'
+  sendMSMessage(msg ,peer.ws)
+  return
+})
+
 
 export const mainServer = {
   peers,
