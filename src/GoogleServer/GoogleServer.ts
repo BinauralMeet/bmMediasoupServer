@@ -1,12 +1,13 @@
 //import configGDrive from "../credentials.json";
-import { google } from "googleapis";
+import { google } from "googleapis"
 import fs  from 'fs';
-import {Readable} from 'stream';
+import {Readable} from 'stream'
 import e from "express";
 
-const config = require('../../config');
-const configGDrive = require(config.googleOAuth2Config);
-
+const config = require('../../config')
+config ?? console.error('GoogleServer.ts failed to load config from "../../config"')
+const configGDrive = require(`../../${config.googleOAuth2Config}`)
+configGDrive ?? console.error('GoogleServer.ts failed to load configGDrive from "../../${config.googleOAuth2Config}"')
 
 export class GoogleServer {
     private _clientId: string;
