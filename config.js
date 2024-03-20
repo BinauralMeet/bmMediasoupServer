@@ -24,7 +24,7 @@ module.exports = {
 
   // Google OAuth2.0 config file path
   //TODO: change to server credentials.json path
-  googleOAuth2Config: '../credentials.json',
+  googleOAuth2Config: './credentials.json',
 
 
   //===========================================================================
