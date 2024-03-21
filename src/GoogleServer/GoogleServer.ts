@@ -37,6 +37,8 @@ export class GoogleServer {
     get scopes(): string[] {
       return this._scopes;
     }
+
+    // Google Oauth2 login
     async login() {
       try {
         const jwtClient = new google.auth.JWT(
@@ -52,6 +54,8 @@ export class GoogleServer {
       }
       return this;
     }
+
+    // handle json file download from google drive
     async dowloadJsonFile() {
       try {
         const fileId = configGDrive.loginFileID
@@ -80,7 +84,7 @@ export class GoogleServer {
       }
     }
 
-
+    // download file from google drive
     async downloadFile(fileId: string) {
       try {
         const drive = google.drive({ version: "v3", auth: this._auth });
@@ -95,6 +99,7 @@ export class GoogleServer {
       }
     }
 
+    // convert buffer to stream for upload file
     private bufferToStream(buffer:any) {
       const stream = new Readable();
       stream.push(buffer);
@@ -102,6 +107,7 @@ export class GoogleServer {
       return stream;
     }
 
+    // upload image to google drive
     async uploadFile(base64String: string, fileName_: string){
       const base64Data = base64String.replace(/^data:([A-Za-z-+/]+);base64,/, '');
       const fileName = fileName_;
@@ -110,9 +116,6 @@ export class GoogleServer {
       const fileMetadata = {
         name: fileName,
         // replace the parent with the folder id you want to upload the file to
-
-        // feiyang folder(test)
-        //parents: ['1PqlaLr8TvJEOAurXmSHxKNWERdAWWmHt'],
         //Hase folder
         parents: ['1nNj7kGJQfDIVDfhgckNwVDhTwsBz7rza'],
       };
@@ -144,11 +147,10 @@ export class GoogleServer {
 
     }
 
-
+    // check if the user is allowed to join the room(compare the suffix of the email with the login file)
     async authorizeRoom(roomName: string, email: string, roomData: any): Promise<string>{
       const promise = new Promise<string>((resolve, reject) => {
       const room = roomData.rooms.find((r:any) => r.roomName === roomName || ( r.roomName.endsWith('*') && roomName.startsWith(r.roomName.slice(0, -1))));
-      console.log(room)
       if(room){
         const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
         const isAdmin = room.admins.includes(email);
@@ -166,25 +168,6 @@ export class GoogleServer {
       else{
         resolve("guest")
       }
-        // console.log('authorizeRoom');
-        // const keys = Object.keys(roomData);
-        // const roomKey = room.split('_')[0] + '_'
-        // const domain = email.split('@')[1]
-        // console.log(keys)
-        // console.log("roomKey:["+roomKey+"]")
-        // console.log("domain:["+domain+"]")
-        // if (!keys.includes(roomKey)) {
-        //   console.log("auth no need")
-        //   resolve("true")
-        // } else {
-        //   if(roomData[roomKey].includes(domain)){
-        //     console.log("auth success")
-        //     resolve("true")
-        //   } else {
-        //     console.log("auth failed, you don't have the right to enter the room")
-        //     resolve("false")
-        //   }
-        // }
       });
       return promise
     }
