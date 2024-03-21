@@ -2,7 +2,7 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSConnectMessage, MSAuthMessage, MSUploadFileMessage} from './MediaServer/MediaMessages'
+import {MSConnectMessage, MSAuthMessage, MSRoomsListMessage} from './MediaServer/MediaMessages'
 import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
 import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
@@ -18,7 +18,7 @@ const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
-
+let roomsList: string[] = []
 const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', {flags:'a', encoding:'utf8'});
 export const userLog = new Console(userLogFile)
 export function stamp(){
@@ -41,6 +41,23 @@ function makeUniqueId(id:string, map: Map<string, any>){
   }
 }
 
+function isRoomNameMatch(roomNames: string[], input: string): boolean {
+  for (const roomName of roomNames) {
+    if (roomName.endsWith('*')) {
+      console.log('roomName in isRoomNameMatch: ' +  roomName + " " + input)
+      const baseRoomName = roomName.slice(0, -1);
+      if (input.startsWith(baseRoomName)) {
+        console.log('baseRoomName: ' + baseRoomName)
+        return true;
+      }
+    } else {
+      if (roomName === input) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 
 
 //--------------------------------------------------
@@ -50,28 +67,52 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
-  //Here makes the connection to the WS
-  if(msg.type === 'auth'){
-    const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
-    // check with google drive json file
-    const gd = new GoogleServer();
-    gd.login().then((logined) => {
+  const gd = new GoogleServer();
 
+  //Here makes the connection to the WS
+  if(msg.type === 'roomsList'){
+    console.log('roomsList called from main.ts')
+    const msg = JSON.parse(messageData.data.toString()) as MSRoomsListMessage
+    gd.login().then((logined) => {
       gd.dowloadJsonFile().then((roomData) => {
-        gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((role) => {
-          if (!role){
-            msg.error = 'auth error'
-          }
-          else if(role === 'guest'){
-            msg.role = 'guest'
-          }
-          else if(role === 'admin'){
-            msg.role = 'admin'
-          }
-          sendMSMessage(msg, ws)
-        })
+        const roomsInfo = JSON.parse(roomData as string)
+        roomsList = roomsInfo.rooms.map((room: any) => room.roomName)
+        msg.rooms = roomsList
+        console.log(roomsList)
+        sendMSMessage(msg, ws)
       })
     })
+  }
+  else if(msg.type === 'auth'){
+    const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
+    // check with google drive json file
+
+    const nameMatchResult = isRoomNameMatch(roomsList, msg.room)
+
+    if(!nameMatchResult){
+      msg.role = 'guest'
+      sendMSMessage(msg, ws)
+    }
+    else{
+      console.log('room name matched call google auth')
+      gd.login().then((logined) => {
+        gd.dowloadJsonFile().then((roomData) => {
+          gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((role) => {
+            if (!role){
+              msg.error = 'auth error'
+            }
+            else if(role === 'guest'){
+              msg.role = 'guest'
+            }
+            else if(role === 'admin'){
+              msg.role = 'admin'
+            }
+            sendMSMessage(msg, ws)
+          })
+        })
+      })
+    }
+
   } else if (msg.type === 'connect'){
     let unique = ''
     let justBefore
