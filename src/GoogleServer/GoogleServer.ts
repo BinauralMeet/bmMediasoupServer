@@ -144,14 +144,12 @@ export class GoogleServer {
 
     }
 
+
     async authorizeRoom(roomName: string, email: string, roomData: any): Promise<string>{
       const promise = new Promise<string>((resolve, reject) => {
-      const room = roomData.rooms.find((r:any) => r.roomName === roomName);
-
-      if (!room) {
-        resolve("guest")
-      }
-      else{
+      const room = roomData.rooms.find((r:any) => r.roomName === roomName || ( r.roomName.endsWith('*') && roomName.startsWith(r.roomName.slice(0, -1))));
+      console.log(room)
+      if(room){
         const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
         const isAdmin = room.admins.includes(email);
         if(isAllowed){
@@ -164,6 +162,9 @@ export class GoogleServer {
         else{
           resolve("reject")
         }
+      }
+      else{
+        resolve("guest")
       }
         // console.log('authorizeRoom');
         // const keys = Object.keys(roomData);

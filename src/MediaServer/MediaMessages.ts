@@ -2,7 +2,7 @@ import * as mediasoup from 'mediasoup'
 export type MSMessageType =
   'dataConnect' | 'positionConnect' | 'position' |
   'connect' | 'auth' | 'join' | 'ping' | 'pong' | 'rtpCapabilities' | 'leave' | 'leave_error' |
-  'remoteUpdate' | 'remoteLeft' |
+  'remoteUpdate' | 'remoteLeft' |'roomsList'|
   'workerAdd' | 'workerDelete' | 'workerUpdate' |
   'createTransport' | 'closeTransport' | 'connectTransport' |
   'produceTransport' | 'closeProducer' | 'consumeTransport' | 'resumeConsumer' |
@@ -44,6 +44,11 @@ export interface MSCheckAdminMessage extends MSMessage{
   token: string
   result?: string
   role?: string
+}
+
+export interface MSRoomsListMessage extends MSMessage{
+  rooms: string[]
+
 }
 
 export interface MSConnectMessage extends MSPeerMessage{
