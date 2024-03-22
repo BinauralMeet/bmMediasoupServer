@@ -41,13 +41,12 @@ function makeUniqueId(id:string, map: Map<string, any>){
   }
 }
 
+// check if room name is matched with the login file info.
 function isRoomNameMatch(roomNames: string[], input: string): boolean {
   for (const roomName of roomNames) {
     if (roomName.endsWith('*')) {
-      console.log('roomName in isRoomNameMatch: ' +  roomName + " " + input)
       const baseRoomName = roomName.slice(0, -1);
       if (input.startsWith(baseRoomName)) {
-        console.log('baseRoomName: ' + baseRoomName)
         return true;
       }
     } else {
@@ -69,7 +68,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
   const gd = new GoogleServer();
 
-  //Here makes the connection to the WS
+  // Get room list from google drive before user login to save loading time.
   if(msg.type === 'roomsList'){
     console.log('roomsList called from main.ts')
     const msg = JSON.parse(messageData.data.toString()) as MSRoomsListMessage
@@ -77,24 +76,25 @@ function onFirstMessage(messageData: websocket.MessageEvent){
       gd.dowloadJsonFile().then((roomData) => {
         const roomsInfo = JSON.parse(roomData as string)
         roomsList = roomsInfo.rooms.map((room: any) => room.roomName)
-        msg.rooms = roomsList
-        console.log(roomsList)
+        msg.rooms = []
         sendMSMessage(msg, ws)
-      })
+      }).catch((err) => {
+        console.log('Error in dowloadJsonFile', err)
+        msg.error = "error in dowloadJsonFile"
+        sendMSMessage(msg, ws)});
     })
   }
   else if(msg.type === 'auth'){
     const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
     // check with google drive json file
-
     const nameMatchResult = isRoomNameMatch(roomsList, msg.room)
-
+    // if room name is not found in the list, user can login without using Oauth2
     if(!nameMatchResult){
       msg.role = 'guest'
       sendMSMessage(msg, ws)
     }
     else{
-      console.log('room name matched call google auth')
+      // load google Oauth2
       gd.login().then((logined) => {
         gd.dowloadJsonFile().then((roomData) => {
           gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((role) => {
