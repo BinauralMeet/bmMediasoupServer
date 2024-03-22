@@ -48,7 +48,7 @@ export interface MSCheckAdminMessage extends MSMessage{
 
 export interface MSRoomsListMessage extends MSMessage{
   rooms: string[]
-
+  error?: string
 }
 
 export interface MSConnectMessage extends MSPeerMessage{

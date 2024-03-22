@@ -78,7 +78,10 @@ function onFirstMessage(messageData: websocket.MessageEvent){
         roomsList = roomsInfo.rooms.map((room: any) => room.roomName)
         msg.rooms = []
         sendMSMessage(msg, ws)
-      })
+      }).catch((err) => {
+        console.log('Error in dowloadJsonFile', err)
+        msg.error = "error in dowloadJsonFile"
+        sendMSMessage(msg, ws)});
     })
   }
   else if(msg.type === 'auth'){
