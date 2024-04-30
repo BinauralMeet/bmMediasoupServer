@@ -250,9 +250,9 @@ handlersForPeer.set('leave_error', (base, peer)=>{
 })
 handlersForPeer.set('pong', (_base)=>{})
 
+// save new admin in backend room data
 handlersForPeer.set('saveAdminInfo', (base, peer)=>{
   const msg = base as MSSaveAdminInfoMessage
-  console.log("saveAdminInfo called")
   let room = rooms.get(msg.room);
   const newAdmin:Admin = {email:msg.email, token:msg.token}
   room?.admin.add(newAdmin)
