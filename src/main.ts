@@ -112,7 +112,6 @@ function onFirstMessage(messageData: websocket.MessageEvent){
         })
       })
     }
-
   } else if (msg.type === 'connect'){
     let unique = ''
     let justBefore
@@ -140,7 +139,6 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     const ds:DataSocket = {ws, lastReceived:Date.now()}
     addDataListener(ds)
   }else if (msg.type === 'positionConnect'){
-
     ws.removeEventListener('message', onFirstMessage)
     addPositionListener(ws, msg.peer)
   }else if (msg.type === 'workerAdd'){

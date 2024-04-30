@@ -8,7 +8,6 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    MSStreamingStartMessage, MSStreamingStopMessage, MSCloseTransportMessage} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
-import { Router } from 'mediasoup/node/lib/Router'
 import { debuglog } from 'util'
 
 const log = debugModule('bmMsE');
