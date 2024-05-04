@@ -296,11 +296,13 @@ handlersForPeer.set('checkAdmin', (base, peer)=>{
         return
       }
     }
+    msg.result = 'reject'
+    sendMSMessage(msg ,peer.ws)
   }
   else{
-    console.log("room not found or admin not found")
+    console.log(`room '${msg.room}'${room? ': admin':''} not found`)
   }
-  msg.result = 'reject'
+  msg.result = 'approve'  //  When room or admin not found, everybody can be admin.
   sendMSMessage(msg ,peer.ws)
   return
 })
