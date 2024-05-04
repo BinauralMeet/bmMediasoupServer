@@ -1,16 +1,27 @@
 import websocket from 'ws'
-import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSUploadFileMessage,MSSaveAdminInfoMessage,MSCheckAdminMessage,
-  MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage, MSRoomJoinMessage,
-  MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage} from './MediaServer/MediaMessages'
-import {userLog, stamp} from './main'
-const config = require('../config');
-import { GoogleServer } from "./GoogleServer/GoogleServer";
+import {MSMessage, MSMessageType, MSCreateTransportReply, MSPeerMessage, MSUploadFileMessage,MSSaveAdminMessage,MSCheckAdminMessage,
+  MSProduceTransportReply, MSRemotePeer, MSRemoteUpdateMessage,
+  MSCloseTransportMessage, MSCloseProducerMessage, MSRemoteLeftMessage, MSWorkerUpdateMessage,
+  MSRoomMessage} from './MediaServer/MediaMessages'
+import fs from 'fs'
+import {Console} from 'console'
+import {GoogleServer} from "./GoogleServer/GoogleServer";
 
+const config = require('../config');
 
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
+const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', {flags:'a', encoding:'utf8'});
+export const userLog = new Console(userLogFile)
+export function stamp(){
+  const date = new Date()
+  return `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}, `
+    + `${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}:${date.getSeconds().toString().padStart(2,'0')}.${date.getMilliseconds().toString().padStart(3,'0')}`
+}
+
+
 /*
     main server only for signaling
       knows peers=endpoints, rooms, producers and consumers
@@ -54,22 +65,19 @@ export interface Peer extends MSRemotePeer{
   worker?: Worker
   transports:string[]
 }
-export interface Admin{
-  email: string
-  token: string
-}
 
 function toMSRemotePeer(peer: Peer):MSRemotePeer{
   const {ws, lastReceived, lastSent, interval, room, worker, ...ms} = peer
   return ms
 }
 
+export interface Admin{
+  email: string
+  token: string
+}
 interface Room{
   id: string;
   RoomName: string;
-  RoomOwner: string;
-  RoomPassword: string;
-  requiredLogin: boolean;
   peers: Set<Peer>;
   admin: Set<Admin>;
 }
@@ -207,18 +215,14 @@ export const handlersForPeer = new Map<MSMessageType, (base:MSMessage, peer: Pee
 
 // --------------> This is where join to the Server
 handlersForPeer.set('join',(base, peer)=>{
-  const msg = base as MSPeerMessage;
-  const join = base as MSRoomJoinMessage;
+  const join = base as MSRoomMessage;
   let room = rooms.get(join.room);
   if (room?.peers) {
     room.peers.add(peer)
   }else{
     room = {
       id: join.room,
-      RoomName: join.RoomName,
-      RoomOwner: join.RoomOwner,
-      RoomPassword: join.RoomPassword,
-      requiredLogin: join.requiredLogin,
+      RoomName: join.room,
       peers: new Set<Peer>([peer]), // <--- The list of users in the Room
       admin: new Set<Admin>()
     }
@@ -252,7 +256,7 @@ handlersForPeer.set('pong', (_base)=>{})
 
 // save new admin in backend room data
 handlersForPeer.set('saveAdminInfo', (base, peer)=>{
-  const msg = base as MSSaveAdminInfoMessage
+  const msg = base as MSSaveAdminMessage
   let room = rooms.get(msg.room);
   const newAdmin:Admin = {email:msg.email, token:msg.token}
   room?.admin.add(newAdmin)

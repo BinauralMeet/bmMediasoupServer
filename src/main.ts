@@ -2,14 +2,14 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSConnectMessage, MSAuthMessage, MSRoomsListMessage} from './MediaServer/MediaMessages'
+import {MSConnectMessage, MSAuthMessage} from './MediaServer/MediaMessages'
 import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
 import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
-import {Console} from 'console'
-import { GoogleServer } from "./GoogleServer/GoogleServer";
+import {GoogleServer} from "./GoogleServer/GoogleServer";
+import {RoomsInfo} from './GoogleServer/RoomsInfo'
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
@@ -18,14 +18,11 @@ const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
+let roomsInfo: RoomsInfo
 let roomsList: string[] = []
-const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', {flags:'a', encoding:'utf8'});
-export const userLog = new Console(userLogFile)
-export function stamp(){
-  const date = new Date()
-  return `${date.getFullYear()}-${(date.getMonth()+1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}, `
-    + `${date.getHours().toString().padStart(2,'0')}:${date.getMinutes().toString().padStart(2,'0')}:${date.getSeconds().toString().padStart(2,'0')}.${date.getMilliseconds().toString().padStart(3,'0')}`
-}
+
+export let messageLoad = 0
+
 
 //--------------------------------------------------
 //  utilities
@@ -58,6 +55,29 @@ function isRoomNameMatch(roomNames: string[], input: string): boolean {
   return false;
 }
 
+function updateRoomsList(gd: GoogleServer){
+  gd.downloadLoginFile().then((roomData) => {
+    roomsInfo = JSON.parse(roomData as string) as RoomsInfo
+    roomsList = roomsInfo.rooms.map((room: any) => room.roomName)
+    //  console.log('roomsInfo:', JSON.stringify(roomsInfo))
+  }).catch((err) => {
+    console.log('Error in dowloadJsonFile', err)
+  })
+}
+function observeLoginFile(gd: GoogleServer){
+  updateRoomsList(gd)
+  setInterval(()=>{
+    //  console.log('observeLoginFile: interval called')
+    updateRoomsList(gd)
+  }, 60*1000)
+}
+function startObserveConfigOnGoogleDrive(){
+  console.log('startObserveConfigOnGoogleDrive()')
+  const gd = new GoogleServer();
+  gd.login().then((logined) => {
+    observeLoginFile(gd)
+  })
+}
 
 //--------------------------------------------------
 //  First websocket message handler
@@ -68,48 +88,26 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
   const gd = new GoogleServer();
 
-  // Get room list from google drive before user login to save loading time.
-  if(msg.type === 'roomsList'){
-    console.log('roomsList called from main.ts')
-    const msg = JSON.parse(messageData.data.toString()) as MSRoomsListMessage
-    gd.login().then((logined) => {
-      gd.dowloadJsonFile().then((roomData) => {
-        const roomsInfo = JSON.parse(roomData as string)
-        roomsList = roomsInfo.rooms.map((room: any) => room.roomName)
-        msg.rooms = []
-        sendMSMessage(msg, ws)
-      }).catch((err) => {
-        console.log('Error in dowloadJsonFile', err)
-        msg.error = "error in dowloadJsonFile"
-        sendMSMessage(msg, ws)});
-    })
-  }
-  else if(msg.type === 'auth'){
+  if(msg.type === 'auth'){
     const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
     // check with google drive json file
     const nameMatchResult = isRoomNameMatch(roomsList, msg.room)
-    // if room name is not found in the list, user can login without using Oauth2
-    if(!nameMatchResult){
+    if(!nameMatchResult){ // room name is not found in the list, user can login without using Oauth2
       msg.role = 'guest'
       sendMSMessage(msg, ws)
     }
-    else{
-      // load google Oauth2
-      gd.login().then((logined) => {
-        gd.dowloadJsonFile().then((roomData) => {
-          gd.authorizeRoom(msg.room, msg.email, JSON.parse(roomData as string)).then((role) => {
-            if (!role){
-              msg.error = 'auth error'
-            }
-            else if(role === 'guest'){
-              msg.role = 'guest'
-            }
-            else if(role === 'admin'){
-              msg.role = 'admin'
-            }
-            sendMSMessage(msg, ws)
-          })
-        })
+    else{ //  Oauth2
+      gd.authorizeRoom(msg.room, msg.token, msg.email, roomsInfo).then((role) => {
+        if (!role){
+          msg.error = 'auth error'
+        }
+        else if(role === 'guest'){
+          msg.role = 'guest'
+        }
+        else if(role === 'admin'){
+          msg.role = 'admin'
+        }
+        sendMSMessage(msg, ws)
       })
     }
   } else if (msg.type === 'connect'){
@@ -156,7 +154,6 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   }
 }
 
-export let messageLoad = 0
 
 function main() {
   Object.assign(global, {d:{mainServer, dataServer}})
@@ -201,7 +198,9 @@ function main() {
           messageLoad = (now - start) / INTERVAL
           //utilization = performance.eventLoopUtilization(utilization)
           //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
-    }, INTERVAL)
+        }, INTERVAL)
+
+        startObserveConfigOnGoogleDrive()   //  Load and observe auth related config file on google drive
 
         resolve();
       });

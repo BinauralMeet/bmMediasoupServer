@@ -1,4 +1,4 @@
-import {MapObject} from './MapObject'
+import {MapObject, MediaClip} from './MapObject'
 const MAXIMIZABLE_IMAGE_MIN_WIDTH = 200
 
 export type ContentType = 'img' | 'text' | 'pdf' | 'youtube' | 'iframe' | 'screen' | 'camera' |
@@ -54,8 +54,7 @@ export interface ISharedContentToSend extends MapObject, SharedContentDataToSend
 export interface ISharedContentToSave extends MapObject, SharedContentDataToSend{
 }
 export interface IPlaybackContent extends ISharedContent{
-  audioBlob?: Blob
-  videoBlob?: Blob
+  clip?: MediaClip
 }
 
 export function contentsToSend(them: ISharedContent[]) {
@@ -116,7 +115,10 @@ export function isContentEditable(c?: ISharedContent) {
 export function isContentMaximizable(c?: ISharedContent) {
   return c && (c.type === 'iframe' || c.type === 'pdf' || c.type === 'whiteboard' ||
     c.type === 'gdrive' || c.type === 'youtube' || c.type === 'screen' || c.type === 'camera'
-    ||  (c.type === 'img' && c.size[0] > MAXIMIZABLE_IMAGE_MIN_WIDTH))
+    ||  (c.type === 'img' && c.size[0] > MAXIMIZABLE_IMAGE_MIN_WIDTH)
+    ||  (c.type === 'text' && c.size[0] > MAXIMIZABLE_IMAGE_MIN_WIDTH)
+  )
+
 }
 //  wallpaper or not
 export function isContentWallpaper(c?: ISharedContent) {

@@ -1,12 +1,12 @@
 import * as mediasoup from 'mediasoup'
 export type MSMessageType =
   'dataConnect' | 'positionConnect' | 'position' |
-  'connect' | 'auth' | 'join' | 'ping' | 'pong' | 'rtpCapabilities' | 'leave' | 'leave_error' |
-  'remoteUpdate' | 'remoteLeft' |'roomsList'|
+  'connect' | 'auth' | 'join' | 'pong' | 'rtpCapabilities' | 'leave' | 'leave_error' |
+  'remoteUpdate' | 'remoteLeft' | 'saveAdminInfo'|'checkAdmin'|
   'workerAdd' | 'workerDelete' | 'workerUpdate' |
   'createTransport' | 'closeTransport' | 'connectTransport' |
   'produceTransport' | 'closeProducer' | 'consumeTransport' | 'resumeConsumer' |
-  'streamingStart' | 'streamingStop' | 'uploadFile'| 'saveAdminInfo' | 'checkAdmin'
+  'streamingStart' | 'streamingStop' | 'uploadFile' | 'saveAdminInfo' | 'checkAdmin'
 export interface MSMessage{
   type: MSMessageType
   sn?: number
@@ -15,27 +15,13 @@ export interface MSPeerMessage extends MSMessage{
   peer: string
   remote?: string
 }
-export interface MSAuthMessage extends MSPeerMessage{
-  room: string
-  email: string
-  error?: string
-  role?: string
-}
-export interface MSUploadFileMessage extends MSMessage{
-  room: string
-  email?: string
-  file: string
-  error?: string
-  fileID?: string
-  fileName: string
-}
 
-export interface MSSaveAdminInfoMessage extends MSMessage{
+export interface MSAuthMessage extends MSPeerMessage{
   room: string
   email: string
   token: string
   error?: string
-
+  role?: string
 }
 
 export interface MSCheckAdminMessage extends MSMessage{
@@ -45,12 +31,22 @@ export interface MSCheckAdminMessage extends MSMessage{
   result?: string
   role?: string
 }
-
-export interface MSRoomsListMessage extends MSMessage{
-  rooms: string[]
+export interface MSSaveAdminMessage extends MSMessage{
+  room: string
+  email: string
+  token: string
   error?: string
+  result?: string
 }
 
+export interface MSUploadFileMessage extends MSMessage{
+  room?: string
+  error?: string
+  email?: string
+  file:string
+  fileID?: string
+  fileName: string
+}
 export interface MSConnectMessage extends MSPeerMessage{
   peerJustBefore?: string
 }
@@ -78,13 +74,6 @@ export interface MSRemoteLeftMessage extends MSMessage{
 
 export interface MSRoomMessage extends MSPeerMessage{
   room: string
-}
-
-export interface MSRoomJoinMessage extends MSRoomMessage {
-  RoomName: string;
-  RoomOwner: string;
-  RoomPassword: string;
-  requiredLogin: boolean;
 }
 export interface MSWorkerUpdateMessage extends MSPeerMessage{
   load: number
@@ -172,6 +161,7 @@ export interface MSStreamingStopMessage extends MSPeerMessage{
 }
 
 export interface MSPositionConnectMessage extends MSPeerMessage{
+  id: string
   name: string
   room: string
 }

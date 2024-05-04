@@ -3,6 +3,8 @@ import { google } from "googleapis"
 import fs  from 'fs';
 import {Readable} from 'stream'
 import e from "express";
+import { RoomsInfo } from "./RoomsInfo";
+import axios from "axios";
 
 const config = require('../../config')
 config ?? console.error('GoogleServer.ts failed to load config from "../../config"')
@@ -56,10 +58,13 @@ export class GoogleServer {
       return this;
     }
 
-    // handle json file download from google drive
-    async dowloadJsonFile() {
+    //  Download login file (JSON) from google drive
+    async downloadLoginFile(){
+      return this.dowloadJsonFile(configGDrive.loginFileID)
+    }
+    // Download json file from google drive
+    async dowloadJsonFile(fileId: string) {
       try {
-        const fileId = configGDrive.loginFileID
         const fileStream = await this.downloadFile(fileId);
         if (fileStream) {
           let fileContent = "";
@@ -83,6 +88,18 @@ export class GoogleServer {
         console.error("Error:", error);
         throw new Error("Error to get jsonFile");
       }
+    }
+    public watchLoginFile(callback: ()=>void){
+      this.watchFile(configGDrive.loginFileID, (a)=>{
+        console.log('watch called', a)
+        callback()
+      })
+    }
+    public watchFile(fileId: string, callback: (a:any)=>void){
+      const drive = google.drive({ version: "v3", auth: this._auth });
+      drive.files.watch(
+        {fileId, supportsAllDrives:true}, callback
+      )
     }
 
     // download file from google drive
@@ -149,26 +166,35 @@ export class GoogleServer {
     }
 
     // check if the user is allowed to join the room(compare the suffix of the email with the login file)
-    async authorizeRoom(roomName: string, email: string, roomData: any): Promise<string>{
+    authorizeRoom(roomName: string, token: string, email: string, roomData: RoomsInfo): Promise<string>{
       const promise = new Promise<string>((resolve, reject) => {
-      const room = roomData.rooms.find((r:any) => r.roomName === roomName || ( r.roomName.endsWith('*') && roomName.startsWith(r.roomName.slice(0, -1))));
-      if(room){
-        const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
-        const isAdmin = room.admins.includes(email);
-        if(isAllowed){
-          if(isAdmin){
-            resolve("admin")
-          }else{
-            resolve("guest")
+        axios.get(
+          'https://www.googleapis.com/oauth2/v3/userinfo',
+          { headers: { Authorization: 'Bearer ' + token } },
+        ).then((userInfo)=>{
+          if (userInfo.data.email === email){
+            const room = roomData.rooms.find((r:any) => r.roomName === roomName || ( r.roomName.endsWith('*') && roomName.startsWith(r.roomName.slice(0, -1))));
+            if(room){
+              const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
+              const isAdmin = room.admins.includes(email);
+              if(isAllowed){
+                if(isAdmin){
+                  resolve("admin")
+                }else{
+                  resolve("guest")
+                }
+              }
+              else{
+                resolve("reject")
+              }
+            }
+            else{
+              resolve("guest")
+            }
           }
-        }
-        else{
+        }).catch((reason)=>{
           resolve("reject")
-        }
-      }
-      else{
-        resolve("guest")
-      }
+        })
       });
       return promise
     }
