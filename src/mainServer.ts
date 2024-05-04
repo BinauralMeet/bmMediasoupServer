@@ -287,7 +287,7 @@ handlersForPeer.set('checkAdmin', (base, peer)=>{
   console.log("checkAdmin called")
   const msg = base as MSCheckAdminMessage
   let room = rooms.get(msg.room);
-  if (room?.admin){
+  if (room?.admin.size){
     for (let admin of room.admin){
       if (admin.email == msg.email && admin.token == msg.token){
         console.log("Admin behavior approve")
