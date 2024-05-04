@@ -93,7 +93,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     // check with google drive json file
     const nameMatchResult = isRoomNameMatch(roomsList, msg.room)
     if(!nameMatchResult){ // room name is not found in the list, user can login without using Oauth2
-      msg.role = 'guest'
+      msg.role = 'admin'
       sendMSMessage(msg, ws)
     }
     else{ //  Oauth2
