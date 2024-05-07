@@ -1,6 +1,6 @@
 import {MSPositionMessage} from '../MediaServer/MediaMessages'
 import websocket from 'ws'
-import { sendMSMessage } from '../mainServer'
+import { sendMSMessage } from '../MainServer/mainServer'
 
 
 export function addPositionListener(ws: websocket.WebSocket, peer: string){

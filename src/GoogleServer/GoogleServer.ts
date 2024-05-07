@@ -3,7 +3,7 @@ import { google } from "googleapis"
 import fs  from 'fs';
 import {Readable} from 'stream'
 import e from "express";
-import { RoomsInfo } from "./RoomsInfo";
+import { LoginInfo } from "./LoginInfo";
 import axios from "axios";
 
 const config = require('../../config')
@@ -166,14 +166,14 @@ export class GoogleServer {
     }
 
     // check if the user is allowed to join the room(compare the suffix of the email with the login file)
-    authorizeRoom(roomName: string, token: string, email: string, roomData: RoomsInfo): Promise<string>{
+    authorizeRoom(roomName: string, token: string, email: string, loginInfo: LoginInfo): Promise<string>{
       const promise = new Promise<string>((resolve, reject) => {
         axios.get(
           'https://www.googleapis.com/oauth2/v3/userinfo',
           { headers: { Authorization: 'Bearer ' + token } },
         ).then((userInfo)=>{
           if (userInfo.data.email === email){
-            const room = roomData.rooms.find((r:any) => r.roomName === roomName || ( r.roomName.endsWith('*') && roomName.startsWith(r.roomName.slice(0, -1))));
+            const room = loginInfo.rooms.find((r:any) => r.roomName === roomName || ( r.roomName.endsWith('*') && roomName.startsWith(r.roomName.slice(0, -1))));
             if(room){
               const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
               const isAdmin = room.admins.includes(email);
@@ -185,7 +185,7 @@ export class GoogleServer {
                 }
               }
               else{
-                resolve("reject")
+                reject("email")
               }
             }
             else{
@@ -193,9 +193,11 @@ export class GoogleServer {
             }
           }
         }).catch((reason)=>{
-          resolve("reject")
+          reject(reason)
         })
       });
       return promise
     }
 }
+
+export const googleServer = new GoogleServer();

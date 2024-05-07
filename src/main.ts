@@ -2,82 +2,26 @@ import websocket from 'ws'
 import https from 'https'
 import fs from 'fs'
 import debugModule from 'debug'
-import {MSConnectMessage, MSAuthMessage} from './MediaServer/MediaMessages'
-import {Worker, Peer, mainServer, sendMSMessage, processPeer, processWorker, addPeerListener, addWorkerListener} from './mainServer'
+import {MSConnectMessage, MSPreConnectMessage} from './MediaServer/MediaMessages'
+import {mainServer, sendMSMessage, processPeer, processWorker,
+  addConnectListener, addWorkerListener, makeUniqueId} from './MainServer/mainServer'
+import {Worker} from './MainServer/types'
 import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
-import {GoogleServer} from "./GoogleServer/GoogleServer";
-import {RoomsInfo} from './GoogleServer/RoomsInfo'
+import {findLoginRoom, startObserveConfigOnGoogleDrive} from './MainServer/mainLogin'
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
 
-const CONSOLE_DEBUG = false
+const CONSOLE_DEBUG = true
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
 const consoleError = console.log
-let roomsInfo: RoomsInfo
-let roomsList: string[] = []
 
 export let messageLoad = 0
 
-
-//--------------------------------------------------
-//  utilities
-function makeUniqueId(id:string, map: Map<string, any>){
-  if (!map.has(id)){
-    return id
-  }
-  for(var i=1;; ++i){
-    const unique = `${id}${i}`
-    if (!map.has(unique)){
-      return unique
-    }
-  }
-}
-
-// check if room name is matched with the login file info.
-function isRoomNameMatch(roomNames: string[], input: string): boolean {
-  for (const roomName of roomNames) {
-    if (roomName.endsWith('*')) {
-      const baseRoomName = roomName.slice(0, -1);
-      if (input.startsWith(baseRoomName)) {
-        return true;
-      }
-    } else {
-      if (roomName === input) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-function updateRoomsList(gd: GoogleServer){
-  gd.downloadLoginFile().then((roomData) => {
-    roomsInfo = JSON.parse(roomData as string) as RoomsInfo
-    roomsList = roomsInfo.rooms.map((room: any) => room.roomName)
-    //  console.log('roomsInfo:', JSON.stringify(roomsInfo))
-  }).catch((err) => {
-    console.log('Error in dowloadJsonFile', err)
-  })
-}
-function observeLoginFile(gd: GoogleServer){
-  updateRoomsList(gd)
-  setInterval(()=>{
-    //  console.log('observeLoginFile: interval called')
-    updateRoomsList(gd)
-  }, 60*1000)
-}
-function startObserveConfigOnGoogleDrive(){
-  console.log('startObserveConfigOnGoogleDrive()')
-  const gd = new GoogleServer();
-  gd.login().then((logined) => {
-    observeLoginFile(gd)
-  })
-}
 
 //--------------------------------------------------
 //  First websocket message handler
@@ -86,52 +30,15 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   const ws = messageData.target
   const msg = JSON.parse(messageData.data.toString()) as MSConnectMessage
   consoleDebug(`PeerMsg ${msg.type} from ${msg.peer}`)
-  const gd = new GoogleServer();
 
-  if(msg.type === 'auth'){
-    const msg = JSON.parse(messageData.data.toString()) as MSAuthMessage
+  if(msg.type === 'preConnect'){
+    const msg = JSON.parse(messageData.data.toString()) as MSPreConnectMessage
     // check with google drive json file
-    const nameMatchResult = isRoomNameMatch(roomsList, msg.room)
-    if(!nameMatchResult){ // room name is not found in the list, user can login without using Oauth2
-      msg.role = 'admin'
-      sendMSMessage(msg, ws)
-    }
-    else{ //  Oauth2
-      gd.authorizeRoom(msg.room, msg.token, msg.email, roomsInfo).then((role) => {
-        if (!role){
-          msg.error = 'auth error'
-        }
-        else if(role === 'guest'){
-          msg.role = 'guest'
-        }
-        else if(role === 'admin'){
-          msg.role = 'admin'
-        }
-        sendMSMessage(msg, ws)
-      })
-    }
-  } else if (msg.type === 'connect'){
-    let unique = ''
-    let justBefore
-
-    if (msg.peerJustBefore && (justBefore = mainServer.peers.get(msg.peerJustBefore))) {
-      mainServer.deletePeer(justBefore)
-      consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
-        `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
-      unique = makeUniqueId(justBefore.peer, mainServer.peers)
-    } else {
-      unique = makeUniqueId(msg.peer, mainServer.peers)
-    }
-    msg.peer = unique
+    const loginRoom = findLoginRoom(msg.room)
+    msg.login = loginRoom?.emailSuffixes?.length ? true : false
     sendMSMessage(msg, ws)
-
-    //  create peer
-    const now = Date.now()
-    const peer:Peer = {peer:unique, ws, producers:[], transports:[], lastSent:now, lastReceived:now}
-    mainServer.peers.set(unique, peer)
     ws.removeEventListener('message', onFirstMessage)
-    addPeerListener(peer)
-    consoleDebug(`${unique} connected: ${JSON.stringify(Array.from(mainServer.peers.keys()))}`)
+    addConnectListener(ws)
   }else if (msg.type === 'dataConnect'){
     ws.removeEventListener('message', onFirstMessage)
     const ds:DataSocket = {ws, lastReceived:Date.now()}

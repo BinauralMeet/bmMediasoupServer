@@ -1,6 +1,6 @@
 import express from 'express';
 import {dataServer} from './DataServer/Stores'
-import {mainServer} from './mainServer'
+import {mainServer} from './MainServer/mainServer'
 import {messageLoad} from './main';
 import {performance} from 'perf_hooks'
 
