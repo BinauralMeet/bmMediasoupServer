@@ -1,6 +1,6 @@
 import websocket from 'ws'
 import { mainServer } from './mainServer'
-import { consoleLog } from './utils'
+import { consoleDebug, consoleLog } from './utils'
 import { MSRemotePeer } from '../MediaServer/MediaMessages'
 
 export interface PingPong {
@@ -21,7 +21,7 @@ export function deleteWorker(worker: Worker){
 export function getVacantWorker(){
   if (mainServer.workers.size){
     const worker = Array.from(mainServer.workers.values()).reduce((prev, cur)=> prev.stat.load < cur.stat.load ? prev : cur)
-    consoleLog(`worker ${worker.id} with load ${worker.stat.load} is selected.`)
+    consoleDebug(`worker ${worker.id} with load ${worker.stat.load} is selected.`)
     return worker
   }
   return undefined

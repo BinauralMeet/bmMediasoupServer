@@ -3,15 +3,17 @@ import {LoginInfo, LoginRoom} from '../GoogleServer/LoginInfo'
 export let loginInfo: LoginInfo
 // check if room name is matched with the login file info.
 export function findLoginRoom(input: string): LoginRoom|undefined {
-  for (const room of loginInfo.rooms) {
-    if (room.roomName.endsWith('*')) {
-      const baseRoomName = room.roomName.slice(0, -1);
-      if (input.startsWith(baseRoomName)) {
-        return room;
-      }
-    } else {
-      if (room.roomName === input) {
-        return room;
+  if (loginInfo?.rooms){
+    for (const room of loginInfo.rooms) {
+      if (room.roomName.endsWith('*')) {
+        const baseRoomName = room.roomName.slice(0, -1);
+        if (input.startsWith(baseRoomName)) {
+          return room;
+        }
+      } else {
+        if (room.roomName === input) {
+          return room;
+        }
       }
     }
   }

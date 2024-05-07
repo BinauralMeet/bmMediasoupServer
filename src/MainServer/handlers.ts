@@ -28,7 +28,6 @@ export function initHandlers(){
 
     peer.room = room;
     userLog.log(`${stamp()}: ${peer.peer} joined to room '${join.room}' ${room.peers.size}`);
-    console.log("room join or setup in join message " + room.id)
     //  Notify (reply) the room's remotes
     const remoteUpdateMsg:MSRemoteUpdateMessage = {
       type:'remoteUpdate',
@@ -39,13 +38,19 @@ export function initHandlers(){
   })
   handlersForPeer.set('leave', (_base, peer)=>{
     userLog.log(`${stamp()}: ${peer.peer} left from room '${peer.room?.id}' ${peer.room?.peers.size?peer.room?.peers.size-1:'not exist'}`)
+    //console.log(`${stamp()}: ${peer.peer} left from room '${peer.room?.id}' ${peer.room?.peers.size?peer.room?.peers.size-1:'not exist'}`)
+    if (peer.interval){
+      clearInterval(peer.interval)
+      peer.interval = undefined
+    }
     deletePeer(peer)
-    peer.ws.close()
   })
   handlersForPeer.set('leave_error', (base, peer)=>{
-    const msg = base as any
-    console.warn(`Peer ${peer.peer} left by error. RTC websocket closed. code:${msg.code} reason:${msg.reason}`)
-    mainServer.deletePeer(peer)
+    if (mainServer.peers.has(peer.peer)){
+      const msg = base as any
+      console.warn(`Peer ${peer.peer} left by error. RTC websocket closed. code:${msg.code} reason:${msg.reason}`)
+      deletePeer(peer)
+    }
   })
   handlersForPeer.set('pong', (_base)=>{})
 
@@ -69,7 +74,7 @@ export function initHandlers(){
 
   // check if the user is admin
   handlersForPeer.set('checkAdmin', (base, peer)=>{
-    console.log("checkAdmin called")
+    consoleDebug("checkAdmin called")
     const msg = base as MSCheckAdminMessage
     let room = mainServer.rooms.get(msg.room);
     if (!room || !room.peers.has(peer)){
@@ -91,6 +96,7 @@ export function initHandlers(){
           }).finally(()=>{
             sendMSMessage(msg ,peer.ws)
           })
+          return
         }
       }
     }else{

@@ -32,8 +32,6 @@ export const mainServer = {
   workers,
   handlersForPeer,
   handlersForWorker,
-  deletePeer,
-  deleteWorker,
 }
 initHandlers()
 
@@ -114,6 +112,7 @@ export function deletePeer(peer: Peer){
 
   remoteLeft([peer.peer], peer.room!)
   peers.delete(peer.peer)
+
   if (CONSOLE_DEBUG){
     const peerList = Array.from(peers.keys()).reduce((prev, cur) => `${prev} ${cur}`, '')
     consoleDebug(`Peers: ${peerList}`)
@@ -189,10 +188,10 @@ export function addConnectListener(ws: websocket){
     if (msg.type === 'pong'){
       //  do nothing
     }else if (msg.type === 'connect'){
-      console.log(`Connect: ${JSON.stringify(msg)}`)
+      consoleDebug(`Connect: ${JSON.stringify(msg)}`)
       if(msg.email && msg.token){ //  Oauth2 if required by client
         googleServer.authorizeRoom(msg.room, msg.token, msg.email, loginInfo).then((role) => {
-          console.log(`auth: ${role}`)
+          consoleDebug(`Connect auth: ${role}`)
           if (!role){
             error()
           }else{
@@ -219,7 +218,7 @@ export function addConnectListener(ws: websocket){
         let justBefore:Peer|undefined
 
         if (msg.peerJustBefore && (justBefore = mainServer.peers.get(msg.peerJustBefore))) {
-          mainServer.deletePeer(justBefore)
+          deletePeer(justBefore)
           consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
             `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
           unique = makeUniqueId(justBefore.peer, mainServer.peers)
@@ -251,14 +250,6 @@ const PEER_TIMEOUT = config.websocketTimeout
 
 function addPeerListener(peer: Peer){
   //console.log(`addPeerListener ${peer.peer} called.`)
-  peer.ws.addEventListener('close', (ev) =>{
-    const mp:MessageAndPeer={
-      msg:{type:'leave_error'},
-      peer
-    }
-    Object.assign(mp.msg, {code: ev.code, reason: ev.reason})
-    peerQueue.push(mp)
-  })
   peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
     const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
     peer.lastReceived = Date.now()
@@ -266,7 +257,7 @@ function addPeerListener(peer: Peer){
     peerQueue.push({msg, peer})
   })
   if (peer.interval) console.error(`addPeerListner for peer ${peer.peer} called again.`)
-  peer.interval = setInterval(()=>{
+    peer.interval = setInterval(()=>{
     const now = Date.now()
     //  check last receive time
     if (now-peer.lastReceived > PEER_TIMEOUT){
@@ -283,11 +274,17 @@ function addPeerListener(peer: Peer){
     }
   }, PEER_TIMEOUT/4)
 
-  peer.ws.addEventListener('close', ()=>{
+  peer.ws.addEventListener('close', (ev) =>{
     if (peer.interval){
       clearInterval(peer.interval)
       peer.interval = undefined
     }
+    const mp:MessageAndPeer={
+      msg:{type:'leave_error'},
+      peer
+    }
+    Object.assign(mp.msg, {code: ev.code, reason: ev.reason})
+    peerQueue.push(mp)
   })
 }
 
@@ -321,7 +318,7 @@ export function addWorkerListener(worker: Worker){
   addPingPongListner(worker)
   worker.ws.addEventListener('close', () =>{
     consoleDebug(`WS for worker ${worker.id} closed.`)
-    mainServer.deleteWorker(worker)
+    deleteWorker(worker)
   })
   worker.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
     const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
