@@ -11,14 +11,10 @@ import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
 import {findLoginRoom, startObserveConfigOnGoogleDrive} from './MainServer/mainLogin'
+import {consoleDebug, consoleError, consoleLog} from './MainServer/utils'
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
-
-const CONSOLE_DEBUG = true
-const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
-const consoleLog = console.log
-const consoleError = console.log
 
 export let messageLoad = 0
 

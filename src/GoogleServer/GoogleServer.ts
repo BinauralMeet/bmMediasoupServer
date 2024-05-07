@@ -89,6 +89,30 @@ export class GoogleServer {
         throw new Error("Error to get jsonFile");
       }
     }
+    public saveLoginFile(content: string){
+      return this.saveJsonFile(configGDrive.loginFileID, content)
+    }
+    public saveJsonFile(fileId: string, content: string){
+        const drive = google.drive({ version: "v3", auth: this._auth });
+      const params = {
+        fileId,
+        uploadType:'media',
+        supportsAllDrives:true,
+        requestBody: {
+          mimeType: 'text/plain'
+        },
+        media: {
+          mimeType: 'text/plain',
+          body: content
+        }
+      };
+      drive.files.update(params).then(res=>{
+        console.log(`GDrive files.update success: ${JSON.stringify(res)}`)
+      }).catch((e)=>{
+        console.log(`GDrive files.update failed: ${JSON.stringify(e)}`)
+      })
+    }
+
     public watchLoginFile(callback: ()=>void){
       this.watchFile(configGDrive.loginFileID, (a)=>{
         console.log('watch called', a)

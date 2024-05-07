@@ -1,6 +1,9 @@
 import { googleServer } from "../GoogleServer/GoogleServer";
-import { MSCheckAdminMessage, MSCloseProducerMessage, MSCloseTransportMessage, MSCreateTransportReply, MSMessage, MSMessageType, MSPeerMessage, MSProduceTransportReply, MSRemoteUpdateMessage, MSRoomMessage, MSSaveAdminMessage, MSUploadFileMessage, MSWorkerUpdateMessage } from "../MediaServer/MediaMessages";
-import { findLoginRoom } from "./mainLogin";
+import { MSCheckAdminMessage, MSCloseProducerMessage, MSCloseTransportMessage,
+   MSCreateTransportReply, MSMessage, MSMessageType, MSPeerMessage, MSProduceTransportReply,
+    MSRemoteUpdateMessage, MSRoomMessage, MSAddAdminMessage, MSUploadFileMessage,
+    MSWorkerUpdateMessage } from "../MediaServer/MediaMessages";
+import { findLoginRoom, loginInfo } from "./mainLogin";
 import { deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWorker, mainServer, remoteUpdated, sendMSMessage } from "./mainServer";
 import { Peer, toMSRemotePeer } from "./types";
 import { consoleDebug, consoleError, stamp, userLog } from "./utils";
@@ -46,13 +49,6 @@ export function initHandlers(){
   })
   handlersForPeer.set('pong', (_base)=>{})
 
-  // save new admin in backend room data
-  handlersForPeer.set('saveAdminInfo', (base, peer)=>{
-    const msg = base as MSSaveAdminMessage
-    //  TODO
-  })
-
-
   // handle user upload image to google drive, return the file id
   handlersForPeer.set('uploadFile', (base, peer)=>{
     const msg = base as MSUploadFileMessage
@@ -82,14 +78,23 @@ export function initHandlers(){
     }
     //  Check login info
     const loginRoom = findLoginRoom(room.roomName)
-    if (loginRoom){
+    if (loginRoom && loginRoom.admins.length){
+      //  Room has admins and need auth needed.
       const admin = loginRoom.admins.find((admin)=>admin === msg.email)
       if (admin){
-        msg.result = 'approve'
-        sendMSMessage(msg ,peer.ws)
-        return
+        if (msg.token && msg.email){
+          googleServer.authorizeRoom(room.roomName, msg.token, msg.email, loginInfo).then(()=>{
+            peer.isAdmin = true
+            msg.result = 'approve'
+          }).catch(()=>{
+            msg.result = 'reject'
+          }).finally(()=>{
+            sendMSMessage(msg ,peer.ws)
+          })
+        }
       }
     }else{
+      //  Room has no admins and everybody can be admin
       if (room.peers.has(peer)){
         peer.isAdmin = true
         msg.result = 'approve'
@@ -101,7 +106,37 @@ export function initHandlers(){
     sendMSMessage(msg ,peer.ws)
     return
   })
-
+  // save new admin in backend room data
+  handlersForPeer.set('addAdmin', (base, peer)=>{
+    const msg = base as MSAddAdminMessage
+    console.log("saveAdmin called")
+    if (peer.isAdmin && peer.room){
+      let modifed = false
+      let loginRoom = findLoginRoom(peer.room.roomName)
+      if (!loginRoom){
+        modifed = true
+        loginRoom = {
+          roomName:peer.room.roomName,
+          emailSuffixes:[],
+          admins:[]
+        }
+        loginInfo.rooms.push(loginRoom)
+      }
+      const admin = loginRoom.admins.find(admin=>admin===msg.email)
+      if (!admin){
+        modifed = true
+        loginRoom.admins.push(msg.email)
+      }
+      if (modifed){
+        googleServer.saveLoginFile(JSON.stringify(loginInfo))
+      }
+      msg.result = 'approve'
+      sendMSMessage(msg, peer.ws)
+    }else{
+      msg.result = 'reject'
+      sendMSMessage(msg, peer.ws)
+    }
+  })
 
   //-------------------------------------------------------
   //  handlers for worker

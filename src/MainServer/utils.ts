@@ -1,7 +1,7 @@
 import fs from 'fs'
 import {Console} from 'console'
 
-export const CONSOLE_DEBUG = true
+export const CONSOLE_DEBUG = false
 export const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 export const consoleLog = console.log
 export const consoleError = console.log
