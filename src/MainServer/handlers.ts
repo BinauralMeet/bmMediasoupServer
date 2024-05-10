@@ -75,7 +75,7 @@ export function initHandlers(){
 
   // check if the user is admin
   handlersForPeer.set('checkAdmin', (base, peer)=>{
-    consoleDebug("checkAdmin called")
+    consoleDebug(`checkAdmin called ${JSON.stringify(base)}`)
     const msg = base as MSCheckAdminMessage
     let room = mainServer.rooms.get(msg.room);
     if (!room || !room.peers.has(peer)){
@@ -93,8 +93,10 @@ export function initHandlers(){
             peer.isAdmin = true
             msg.result = 'approve'
             msg.loginInfo = roomLoginInfo
+            consoleDebug(`checkAdmin approve ${JSON.stringify(roomLoginInfo)}`)
           }).catch(()=>{
             msg.result = 'reject'
+            consoleDebug(`checkAdmin rejected ${JSON.stringify(roomLoginInfo)}`)
           }).finally(()=>{
             sendMSMessage(msg ,peer.ws)
           })
@@ -123,7 +125,7 @@ export function initHandlers(){
       console.warn(`googleServer.login() failed ${JSON.stringify(e)}`)
     })
   }
-
+  const MINIMUM_NEW_ROOM_NAME_LENGTH = 7
   // addAdmin and save loginFile to google drive.
   handlersForPeer.set('addAdmin', (base, peer)=>{
     const msg = base as MSAddAdminMessage
@@ -131,7 +133,7 @@ export function initHandlers(){
     if (peer.isAdmin && peer.room){
       let modifed = false
       let roomLoginInfo = findRoomLoginInfo(peer.room.roomName)
-      if (!roomLoginInfo){
+      if (!roomLoginInfo && peer.room.roomName.length >= MINIMUM_NEW_ROOM_NAME_LENGTH){
         modifed = true
         roomLoginInfo = {
           roomName:peer.room.roomName,
@@ -140,19 +142,23 @@ export function initHandlers(){
         }
         loginInfo.rooms.push(roomLoginInfo)
       }
-      const admin = roomLoginInfo.admins.find(admin=>admin===msg.email)
-      if (!admin){
-        modifed = true
-        roomLoginInfo.admins.push(msg.email)
+      if (roomLoginInfo){
+        const admin = roomLoginInfo.admins.find(admin=>admin===msg.email)
+        if (!admin){
+          modifed = true
+          roomLoginInfo.admins.push(msg.email)
+        }
       }
       if (modifed) saveLoginFile()
-      msg.result = 'approve'
-      msg.loginInfo = roomLoginInfo
-      sendMSMessage(msg, peer.ws)
-    }else{
-      msg.result = 'reject'
-      sendMSMessage(msg, peer.ws)
+      if (roomLoginInfo){
+        msg.result = 'approve'
+        msg.loginInfo = roomLoginInfo
+        sendMSMessage(msg, peer.ws)
+        return
+      }
     }
+    msg.result = 'reject'
+    sendMSMessage(msg, peer.ws)
   })
   handlersForPeer.set('removeAdmin', (base, peer)=>{
     const msg = base as MSAddAdminMessage
@@ -179,7 +185,7 @@ export function initHandlers(){
     if (peer.isAdmin && peer.room){
       let modifed = false
       let roomLoginInfo = findRoomLoginInfo(peer.room.roomName)
-      if (!roomLoginInfo){
+      if (!roomLoginInfo && peer.room.roomName.length >= MINIMUM_NEW_ROOM_NAME_LENGTH){
         modifed = true
         roomLoginInfo = {
           roomName:peer.room.roomName,
@@ -188,19 +194,21 @@ export function initHandlers(){
         }
         loginInfo.rooms.push(roomLoginInfo)
       }
-      const suffix = roomLoginInfo.emailSuffixes.find(suffix=>suffix===msg.email)
-      if (!suffix){
-        modifed = true
-        roomLoginInfo.emailSuffixes.push(msg.email)
+      if (roomLoginInfo){
+        const suffix = roomLoginInfo.emailSuffixes.find(suffix=>suffix===msg.email)
+        if (!suffix){
+          modifed = true
+          roomLoginInfo.emailSuffixes.push(msg.email)
+        }
+        if (modifed) saveLoginFile()
+        msg.result = 'approve'
+        msg.loginInfo = roomLoginInfo
+        sendMSMessage(msg, peer.ws)
+        return
       }
-      if (modifed) saveLoginFile()
-      msg.result = 'approve'
-      msg.loginInfo = roomLoginInfo
-      sendMSMessage(msg, peer.ws)
-    }else{
-      msg.result = 'reject'
-      sendMSMessage(msg, peer.ws)
     }
+    msg.result = 'reject'
+    sendMSMessage(msg, peer.ws)
   })
   handlersForPeer.set('removeLogin', (base, peer)=>{
     const msg = base as MSAddAdminMessage

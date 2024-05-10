@@ -5,6 +5,7 @@ import {Readable} from 'stream'
 import e from "express";
 import { LoginInfo } from "./LoginInfo";
 import axios from "axios";
+import { consoleDebug } from "../MainServer/utils";
 
 const config = require('../../config')
 config ?? console.error('GoogleServer.ts failed to load config from "../../config"')
@@ -199,7 +200,9 @@ export class GoogleServer {
           if (userInfo.data.email === email){
             const room = loginInfo.rooms.find((r:any) => r.roomName === roomName || ( r.roomName.endsWith('*') && roomName.startsWith(r.roomName.slice(0, -1))));
             if(room){
-              const isAllowed = room.emailSuffixes.some((suffix:any) => email.endsWith(suffix));
+              consoleDebug(`room ${JSON.stringify(room)} found.`)
+              const isAllowed = room.emailSuffixes.length ?
+                room.emailSuffixes.some((suffix:any) => email.endsWith(suffix)) : true
               const isAdmin = room.admins.includes(email);
               if(isAllowed){
                 if(isAdmin){
