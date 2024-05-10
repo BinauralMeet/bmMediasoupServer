@@ -10,7 +10,7 @@ import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
-import {findLoginRoom, startObserveConfigOnGoogleDrive} from './MainServer/mainLogin'
+import {findRoomLoginInfo, startObserveConfigOnGoogleDrive} from './MainServer/mainLogin'
 import {consoleDebug, consoleError, consoleLog} from './MainServer/utils'
 
 const err = debugModule('bmMsM:ERROR');
@@ -30,7 +30,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
   if(msg.type === 'preConnect'){
     const msg = JSON.parse(messageData.data.toString()) as MSPreConnectMessage
     // check with google drive json file
-    const loginRoom = findLoginRoom(msg.room)
+    const loginRoom = findRoomLoginInfo(msg.room)
     msg.login = loginRoom?.emailSuffixes?.length ? true : false
     sendMSMessage(msg, ws)
     ws.removeEventListener('message', onFirstMessage)

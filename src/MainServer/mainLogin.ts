@@ -1,8 +1,9 @@
 import {GoogleServer} from '../GoogleServer/GoogleServer';
-import {LoginInfo, LoginRoom} from '../GoogleServer/LoginInfo'
+import {LoginInfo} from '../GoogleServer/LoginInfo'
+import {RoomLoginInfo} from '../MediaServer/MediaMessages';
 export let loginInfo: LoginInfo
 // check if room name is matched with the login file info.
-export function findLoginRoom(input: string): LoginRoom|undefined {
+export function findRoomLoginInfo(input: string): RoomLoginInfo|undefined {
   if (loginInfo?.rooms){
     for (const room of loginInfo.rooms) {
       if (room.roomName.endsWith('*')) {

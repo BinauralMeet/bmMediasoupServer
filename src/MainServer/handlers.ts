@@ -1,9 +1,10 @@
+import { google } from "googleapis";
 import { googleServer } from "../GoogleServer/GoogleServer";
 import { MSCheckAdminMessage, MSCloseProducerMessage, MSCloseTransportMessage,
    MSCreateTransportReply, MSMessage, MSMessageType, MSPeerMessage, MSProduceTransportReply,
     MSRemoteUpdateMessage, MSRoomMessage, MSAddAdminMessage, MSUploadFileMessage,
     MSWorkerUpdateMessage } from "../MediaServer/MediaMessages";
-import { findLoginRoom, loginInfo } from "./mainLogin";
+import { findRoomLoginInfo, loginInfo } from "./mainLogin";
 import { deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWorker, mainServer, remoteUpdated, sendMSMessage } from "./mainServer";
 import { Peer, toMSRemotePeer } from "./types";
 import { consoleDebug, consoleError, stamp, userLog } from "./utils";
@@ -82,15 +83,16 @@ export function initHandlers(){
       return
     }
     //  Check login info
-    const loginRoom = findLoginRoom(room.roomName)
-    if (loginRoom && loginRoom.admins.length){
+    const roomLoginInfo = findRoomLoginInfo(room.roomName)
+    if (roomLoginInfo && roomLoginInfo.admins.length){
       //  Room has admins and need auth needed.
-      const admin = loginRoom.admins.find((admin)=>admin === msg.email)
+      const admin = roomLoginInfo.admins.find((admin)=>admin === msg.email)
       if (admin){
         if (msg.token && msg.email){
           googleServer.authorizeRoom(room.roomName, msg.token, msg.email, loginInfo).then(()=>{
             peer.isAdmin = true
             msg.result = 'approve'
+            msg.loginInfo = roomLoginInfo
           }).catch(()=>{
             msg.result = 'reject'
           }).finally(()=>{
@@ -104,6 +106,7 @@ export function initHandlers(){
       if (room.peers.has(peer)){
         peer.isAdmin = true
         msg.result = 'approve'
+        msg.loginInfo = roomLoginInfo
         sendMSMessage(msg ,peer.ws)
         return
       }
@@ -112,36 +115,111 @@ export function initHandlers(){
     sendMSMessage(msg ,peer.ws)
     return
   })
-  // save new admin in backend room data
+
+  function saveLoginFile(){
+    googleServer.login().then(()=>{
+      googleServer.saveLoginFile(JSON.stringify(loginInfo))
+    }).catch((e)=>{
+      console.warn(`googleServer.login() failed ${JSON.stringify(e)}`)
+    })
+  }
+
+  // addAdmin and save loginFile to google drive.
   handlersForPeer.set('addAdmin', (base, peer)=>{
     const msg = base as MSAddAdminMessage
-    console.log("saveAdmin called")
+    //  console.log("addAdmin called")
     if (peer.isAdmin && peer.room){
       let modifed = false
-      let loginRoom = findLoginRoom(peer.room.roomName)
-      if (!loginRoom){
+      let roomLoginInfo = findRoomLoginInfo(peer.room.roomName)
+      if (!roomLoginInfo){
         modifed = true
-        loginRoom = {
+        roomLoginInfo = {
           roomName:peer.room.roomName,
           emailSuffixes:[],
           admins:[]
         }
-        loginInfo.rooms.push(loginRoom)
+        loginInfo.rooms.push(roomLoginInfo)
       }
-      const admin = loginRoom.admins.find(admin=>admin===msg.email)
+      const admin = roomLoginInfo.admins.find(admin=>admin===msg.email)
       if (!admin){
         modifed = true
-        loginRoom.admins.push(msg.email)
+        roomLoginInfo.admins.push(msg.email)
       }
-      if (modifed){
-        googleServer.saveLoginFile(JSON.stringify(loginInfo))
-      }
+      if (modifed) saveLoginFile()
       msg.result = 'approve'
+      msg.loginInfo = roomLoginInfo
       sendMSMessage(msg, peer.ws)
     }else{
       msg.result = 'reject'
       sendMSMessage(msg, peer.ws)
     }
+  })
+  handlersForPeer.set('removeAdmin', (base, peer)=>{
+    const msg = base as MSAddAdminMessage
+    //  console.log("removeAdmin called")
+    if (peer.isAdmin && peer.room){
+      let roomLoginInfo = findRoomLoginInfo(peer.room.roomName)
+      if (roomLoginInfo){
+        const index = roomLoginInfo.admins.findIndex(admin=>admin===msg.email)
+        if (index >= 0){
+          roomLoginInfo.admins.splice(index, 1)
+          saveLoginFile()
+          msg.result = 'approve'
+          msg.loginInfo = roomLoginInfo
+          sendMSMessage(msg, peer.ws)
+        }
+      }
+    }
+    msg.result = 'reject'
+    sendMSMessage(msg, peer.ws)
+  })
+  handlersForPeer.set('addLogin', (base, peer)=>{
+    const msg = base as MSAddAdminMessage
+    //  console.log("addLogin called")
+    if (peer.isAdmin && peer.room){
+      let modifed = false
+      let roomLoginInfo = findRoomLoginInfo(peer.room.roomName)
+      if (!roomLoginInfo){
+        modifed = true
+        roomLoginInfo = {
+          roomName:peer.room.roomName,
+          emailSuffixes:[],
+          admins:[]
+        }
+        loginInfo.rooms.push(roomLoginInfo)
+      }
+      const suffix = roomLoginInfo.emailSuffixes.find(suffix=>suffix===msg.email)
+      if (!suffix){
+        modifed = true
+        roomLoginInfo.emailSuffixes.push(msg.email)
+      }
+      if (modifed) saveLoginFile()
+      msg.result = 'approve'
+      msg.loginInfo = roomLoginInfo
+      sendMSMessage(msg, peer.ws)
+    }else{
+      msg.result = 'reject'
+      sendMSMessage(msg, peer.ws)
+    }
+  })
+  handlersForPeer.set('removeLogin', (base, peer)=>{
+    const msg = base as MSAddAdminMessage
+    //  console.log("removeLogin called")
+    if (peer.isAdmin && peer.room){
+      let roomLoginInfo = findRoomLoginInfo(peer.room.roomName)
+      if (roomLoginInfo){
+        const index = roomLoginInfo.emailSuffixes.findIndex(suffix=>suffix===msg.email)
+        if (index >= 0){
+          roomLoginInfo.emailSuffixes.splice(index, 1)
+          saveLoginFile()
+          msg.result = 'approve'
+          msg.loginInfo = roomLoginInfo
+          sendMSMessage(msg, peer.ws)
+        }
+      }
+    }
+    msg.result = 'reject'
+    sendMSMessage(msg, peer.ws)
   })
 
   //-------------------------------------------------------

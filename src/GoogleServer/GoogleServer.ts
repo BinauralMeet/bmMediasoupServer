@@ -107,7 +107,7 @@ export class GoogleServer {
         }
       };
       drive.files.update(params).then(res=>{
-        console.log(`GDrive files.update success: ${JSON.stringify(res)}`)
+        //console.log(`GDrive files.update success: ${JSON.stringify(res)}`)
       }).catch((e)=>{
         console.log(`GDrive files.update failed: ${JSON.stringify(e)}`)
       })

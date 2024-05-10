@@ -2,7 +2,7 @@ import websocket from 'ws'
 import {MSMessage, MSMessageType, MSPeerMessage, MSRemoteUpdateMessage, MSCloseTransportMessage,
   MSCloseProducerMessage, MSRemoteLeftMessage, MSConnectMessage} from '../MediaServer/MediaMessages'
 import {googleServer} from "../GoogleServer/GoogleServer";
-import {findLoginRoom, loginInfo} from './mainLogin';
+import {findRoomLoginInfo, loginInfo} from './mainLogin';
 import {Peer, Worker, Room, PingPong, deleteWorker, getVacantWorker, toMSRemotePeer} from './types';
 import {CONSOLE_DEBUG, consoleDebug, consoleError, consoleLog } from './utils';
 import {initHandlers} from './handlers';
@@ -202,7 +202,7 @@ export function addConnectListener(ws: websocket){
           error()
         })
       }else{
-        const loginRoom = findLoginRoom(msg.room)
+        const loginRoom = findRoomLoginInfo(msg.room)
         if (!loginRoom?.emailSuffixes?.length){
           createPeer()
         }else{

@@ -1,8 +1,4 @@
-export interface LoginRoom{
-  roomName: string
-  emailSuffixes: string[],
-  admins: string[]
-}
+import {RoomLoginInfo} from "../MediaServer/MediaMessages"
 export interface LoginInfo{
-  rooms: LoginRoom[]
+  rooms: RoomLoginInfo[]
 }
