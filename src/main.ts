@@ -6,7 +6,7 @@ import {MSConnectMessage, MSPreConnectMessage} from './MediaServer/MediaMessages
 import {mainServer, sendMSMessage, processPeer, processWorker,
   addConnectListener, addWorkerListener, makeUniqueId} from './MainServer/mainServer'
 import {Worker} from './MainServer/types'
-import {addDataListener, DataSocket, processData} from './DataServer/dataServer'
+import {addDataListener, checkDataLogin, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
@@ -36,9 +36,18 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     ws.removeEventListener('message', onFirstMessage)
     addConnectListener(ws)
   }else if (msg.type === 'dataConnect'){
-    ws.removeEventListener('message', onFirstMessage)
-    const ds:DataSocket = {ws, lastReceived:Date.now()}
-    addDataListener(ds)
+    consoleDebug(`dataConnect checkDataLogin.`)
+    checkDataLogin(msg).then(()=>{
+      consoleDebug(`dataConnect accepted.`)
+      ws.removeEventListener('message', onFirstMessage)
+      const ds:DataSocket = {ws, lastReceived:Date.now()}
+      addDataListener(ds)
+      consoleDebug(`dataConnect accepted and send msg.`)
+      ws.send(JSON.stringify(msg))
+    }).catch(() => {
+      consoleDebug(`dataConnect rejected.`)
+      ws.close()
+    })
   }else if (msg.type === 'positionConnect'){
     ws.removeEventListener('message', onFirstMessage)
     addPositionListener(ws, msg.peer)
@@ -53,7 +62,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     ws.removeEventListener('message', onFirstMessage)
     addWorkerListener(worker)
   }else{
-    console.warn(`invalid first message ${msg.type} received from ${msg.peer}.`)
+    console.warn(`invalid first message ${JSON.stringify(msg)} received.`)
   }
 }
 

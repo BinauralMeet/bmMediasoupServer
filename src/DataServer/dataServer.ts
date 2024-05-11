@@ -5,11 +5,12 @@ import {MessageType, InstantMessageType, StoredMessageType, InstantMessageKeys, 
 import {getRect, isOverlapped, isOverlappedToCircle, isInRect, isInCircle, str2Mouse, str2Pose} from './coordinates'
 import {Content, messageHandlers, rooms, RoomStore, ParticipantStore, createContentSent, updateContentSent} from './Stores'
 import websocket from 'ws'
+import { MSConnectMessage } from '../MediaServer/MediaMessages'
+import { googleServer } from '../GoogleServer/GoogleServer'
+import { findRoomLoginInfo, loginInfo } from '../MainServer/mainLogin'
+import { consoleDebug } from '../MainServer/utils'
 
 const config = require('../../config')
-
-const CONSOLE_DEBUG = false
-const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 
 export interface DataSocket{
   ws: websocket.WebSocket
@@ -378,6 +379,29 @@ export function processData():boolean{
     return true
   }
   return false
+}
+
+
+export function checkDataLogin(msg: MSConnectMessage){
+  const promise = new Promise<void>((resolve, reject)=>{
+    const roomLoginInfo = findRoomLoginInfo(msg.room)
+    if (roomLoginInfo?.emailSuffixes.length){
+      if (msg.token && msg.email){
+        googleServer.authorizeRoom(msg.room, msg.token, msg.email, loginInfo).
+          then(()=>{
+            resolve()
+          }).catch((e)=>{
+            consoleDebug(`checkDataLogin rejected ${JSON.stringify(e)}`)
+            reject()
+          })
+      }else{
+        reject()
+      }
+    }else{
+      resolve()
+    }
+  })
+  return promise
 }
 
 //--------------------------------------------------
