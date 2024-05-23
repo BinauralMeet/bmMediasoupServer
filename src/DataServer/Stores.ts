@@ -277,7 +277,7 @@ export class Rooms{
   rooms = new Map<string, RoomStore>()
   sockMap = new Map<websocket.WebSocket, PandR>()
   sendCount = 0;
-  get(name: string){
+  getOrCreate(name: string){
     const found = this.rooms.get(name)
     if (found){
       return found

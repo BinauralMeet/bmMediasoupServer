@@ -354,7 +354,7 @@ export function processData():boolean{
     let room:RoomStore|undefined
     if (top.msg.r && top.msg.p){
       //  create room and participant
-      room = rooms.get(top.msg.r)
+      room = rooms.getOrCreate(top.msg.r)
       participant = room.getParticipant(top.msg.p, top.ws)
       if (participant.socket !== top.ws){
         console.log(`Remove old participant with the same id '${participant.id}'.`)
@@ -370,11 +370,15 @@ export function processData():boolean{
     }
 
     //  call handler
-    const handler = messageHandlers.get(top.msg.t)
-    if (handler){
-      handler(top.msg, participant!, room!)
+    if (participant && room){
+      const handler = messageHandlers.get(top.msg.t)
+      if (handler){
+        handler(top.msg, participant, room)
+      }else{
+        console.error(`No message handler for ${top.msg.t} - ${top.msg}`)
+      }
     }else{
-      console.error(`No message handler for ${top.msg.t} - ${top.msg}`)
+      console.warn(`Could not call handler with room:"${room}" participant:"${participant}"`)
     }
     return true
   }
