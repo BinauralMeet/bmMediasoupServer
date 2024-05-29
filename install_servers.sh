@@ -23,8 +23,9 @@ yarn
 yarn build
 emacs ./dist/config.js  # edit config file to enable sections for Deploy instead of Debug.
 yarn global add pm2
-#pm2 start dist/src/main.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bm
-pm2 start dist/src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bmm
+cd dist
+#pm2 start ./src/main.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bm
+pm2 start ./src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bmm
 pm2 save
 pm2 startup
 ln -s /root/.pm2/logs /var/log/pm2
