@@ -9,3 +9,9 @@ shell for npm must be git bash. Need seeting:  npm config set script-shell "C:\\
 ## Run
 `yarn main`  run main server  (gateway for mediasoups)
 `yarn media` run media server (use mediasoup)
+
+## Debug
+Using chrome inspector is a good method.
+ - '--inspect' option is already added to 'yarn main'
+ - Open chrome://inspect/ by Chrome
+ - global.d.mainServer is the mainserver object.
