@@ -112,7 +112,9 @@ function main() {
           //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
         }, INTERVAL)
 
-        startObserveConfigOnGoogleDrive()   //  Load and observe auth related config file on google drive
+        if (config.googleOAuth2Config){
+          startObserveConfigOnGoogleDrive()   //  Load and observe auth related config file on google drive
+        }
 
         resolve();
       });

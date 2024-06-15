@@ -8,9 +8,10 @@ import axios from "axios";
 import { consoleDebug } from "../MainServer/utils";
 
 const config = require('../../config')
-config ?? console.error('GoogleServer.ts failed to load config from "../../config"')
-const configGDrive = require(`../../${config.googleOAuth2Config}`)
-configGDrive ?? console.error('GoogleServer.ts failed to load configGDrive from "../../${config.googleOAuth2Config}"')
+config ?? console.warn('GoogleServer.ts failed to load config from "../../config"')
+config.googleOAuth2Config ?? console.warn('GoogleServer.ts failed to read location of oauth2 config')
+const configGDrive = config.googleOAuth2Config ? require(`../../${config.googleOAuth2Config}`) : undefined
+configGDrive ?? console.warn(`GoogleServer.ts failed to load configGDrive from "../../${config.googleOAuth2Config}"`)
 
 export class GoogleServer {
     private _clientId: string;
@@ -18,8 +19,8 @@ export class GoogleServer {
     private _scopes: string[];
     private _auth: any;
     constructor(
-      clientId: string = configGDrive.client_id,
-      privateKey: string = configGDrive.private_key,
+      clientId: string|undefined = configGDrive?.client_id,
+      privateKey: string|undefined = configGDrive?.private_key,
       scopes: string[] = [
         'https://www.googleapis.com/auth/drive',
         'https://www.googleapis.com/auth/drive.file',
