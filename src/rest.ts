@@ -63,3 +63,16 @@ restApp.get('/load', function(req, res) {
   const rv = {...utilization, messageLoad}
   res.json(rv)
 })
+
+restApp.get('/peer', function(req, res) {
+  console.log(`get /peer  req:${req.path}`)
+  const peers = Array.from(mainServer.peers.values())
+  const obj = peers.map(p => {
+    const {peer, ws, room, interval, worker, ...rest} = p
+    const peerData = rest as any
+    peerData.worker = worker?.id
+    peerData.wsState = ws.readyState
+    return peerData
+  })
+  res.json(obj)
+})

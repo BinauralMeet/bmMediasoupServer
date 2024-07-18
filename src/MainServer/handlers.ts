@@ -47,11 +47,14 @@ export function initHandlers(){
     deletePeer(peer)
   })
   handlersForPeer.set('leave_error', (base, peer)=>{
-    if (mainServer.peers.has(peer.peer)){
-      const msg = base as any
-      console.warn(`Peer ${peer.peer} left by error. RTC websocket closed. code:${msg.code} reason:${msg.reason}`)
-      deletePeer(peer)
+    const msg = base as any
+    console.warn(`Peer ${peer.peer} left by error. RTC websocket closed. code:${msg.code} reason:${msg.reason}`)
+    if (peer.interval){
+      clearInterval(peer.interval)
+      peer.interval = undefined
     }
+    console.log('delete peer', peer)
+    deletePeer(peer)
   })
   handlersForPeer.set('pong', (_base)=>{})
 

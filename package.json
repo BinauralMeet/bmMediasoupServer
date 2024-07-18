@@ -28,7 +28,8 @@
   "scripts": {
     "build": "npx tsc",
     "main": "ts-node-dev --respawn  --inspect=8228 -- src/main.ts",
-    "media": "export NODE_TLS_REJECT_UNAUTHORIZED=0;ts-node-dev --respawn --inspect=8229 -- src/media.ts",
-    "wscat": "export NODE_TLS_REJECT_UNAUTHORIZED=0;wscat -c wss://localhost:3000"
+    "media": "set NODE_TLS_REJECT_UNAUTHORIZED=0&ts-node-dev --respawn --inspect=8229 -- src/media.ts",
+    "wscat": "set NODE_TLS_REJECT_UNAUTHORIZED=0&wscat -c wss://localhost:3000",
+    "comment": "Two scripts above are for windows. It seems yarn uses cmd for them"
   }
 }
