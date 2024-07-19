@@ -53,7 +53,7 @@ export function initHandlers(){
       clearInterval(peer.interval)
       peer.interval = undefined
     }
-    console.log('delete peer', peer)
+    //console.log('delete peer', peer)
     deletePeer(peer)
   })
   handlersForPeer.set('pong', (_base)=>{})

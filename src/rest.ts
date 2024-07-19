@@ -11,7 +11,7 @@ restApp.use(cors()); // enable CORS
 
 // Let's create the regular HTTP request and response
 restApp.get('/room', function(req, res) {
-  console.log(`get /room  req:${req.path}`)
+  //console.log(`get /room  req:${req.path}`)
   let ids = Array.from(mainServer.rooms.keys())
   ids.push(... Array.from(dataServer.rooms.rooms.keys()))
   ids = ids.filter((id, index, self) => self.indexOf(id) === index) //  Make ids unique
@@ -41,7 +41,7 @@ restApp.get('/room', function(req, res) {
 
 restApp.get(/\/room\/.+/g , function(req, res) {
   const roomId = req.path.substring(6)
-  console.log(`get /\/room\/.+/g req: ${req.path} room:${roomId}`)
+  //console.log(`get /\/room\/.+/g req: ${req.path} room:${roomId}`)
 
   const droom = dataServer.rooms.rooms.get(roomId)
   const rroom = mainServer.rooms.get(roomId)
@@ -57,7 +57,7 @@ restApp.get(/\/room\/.+/g , function(req, res) {
 })
 
 restApp.get('/load', function(req, res) {
-  console.log(`get /load  req:${req.path}`)
+  //console.log(`get /load  req:${req.path}`)
   const utilization = performance.eventLoopUtilization()
   //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
   const rv = {...utilization, messageLoad}
@@ -65,7 +65,7 @@ restApp.get('/load', function(req, res) {
 })
 
 restApp.get('/peer', function(req, res) {
-  console.log(`get /peer  req:${req.path}`)
+  //console.log(`get /peer  req:${req.path}`)
   const peers = Array.from(mainServer.peers.values())
   const obj = peers.map(p => {
     const {peer, ws, room, interval, worker, ...rest} = p
