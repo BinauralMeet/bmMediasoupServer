@@ -30,6 +30,9 @@ cd dist
 # Then, open chrome://inspect and type 'global.d.mainServer' to see the mainServer object.
 
 pm2 start ./src/media.js --log-date-format 'MM-DD HH:mm:ss.SSS' --name bmm --node-args '--inspect'
+# ssh -L 9339:localhost:9229 media1.titech.binaural.me
+# Then, open chrome://inspect and make port forwarding active.
+# Then type 'global.d.mainServer' to see the mainServer object.
 
 pm2 save
 pm2 startup
@@ -43,17 +46,19 @@ ufw allow 40000:49999/udp
 
 apt-get install certbot
 # get cert
-certbot certonly
+certbot certonly -d $HOSTNAME
 
 # add script to certbot's env
 # --------------------------------------------------------------------
 # for media server
 echo \#\!/bin/bash > /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
 echo /etc/init.d/coturn stop >> /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
-echo /etc/init.d/nginx start >> /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
+echo \#/etc/init.d/nginx start >> /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
 chmod 777 /etc/letsencrypt/renewal-hooks/pre/stopturn.sh
 echo \#\!/bin/bash > /etc/letsencrypt/renewal-hooks/post/startturn.sh
 echo cp /etc/letsencrypt/live/$HOSTNAME/\*.pem /etc/coturn/certs/ >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
+echo chown turnserver /etc/coturn/certs/* >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
+echo chgrp turnserver /etc/coturn/certs/* >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
 echo /etc/init.d/nginx stop >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
 echo /etc/init.d/coturn start >> /etc/letsencrypt/renewal-hooks/post/startturn.sh
 chmod 777 /etc/letsencrypt/renewal-hooks/post/startturn.sh
@@ -77,6 +82,9 @@ rm turnserver.conf
 curl https://binaural.me/public_packages/media/turnserver.conf>turnserver.conf
 chown turnserver turnserver.conf
 chgrp turnserver turnserver.conf
+setcap CAP_NET_BIND_SERVICE+ep /usr/bin/turnserver
+mkdir /var/log/coturn
+chmod 777 /var/log/coturn
 
 cd /root
 curl https://binaural.me/public_packages/media/updateCert.sh>updateCert.sh

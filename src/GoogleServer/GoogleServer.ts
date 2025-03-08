@@ -1,8 +1,5 @@
-//import configGDrive from "../credentials.json";
 import { google } from "googleapis"
-import fs  from 'fs';
 import {Readable} from 'stream'
-import e from "express";
 import { LoginInfo } from "./LoginInfo";
 import axios from "axios";
 import { consoleDebug } from "../MainServer/utils";
@@ -113,19 +110,6 @@ export class GoogleServer {
       }).catch((e)=>{
         console.log(`GDrive files.update failed: ${JSON.stringify(e)}`)
       })
-    }
-
-    public watchLoginFile(callback: ()=>void){
-      this.watchFile(configGDrive.loginFileID, (a)=>{
-        console.log('watch called', a)
-        callback()
-      })
-    }
-    public watchFile(fileId: string, callback: (a:any)=>void){
-      const drive = google.drive({ version: "v3", auth: this._auth });
-      drive.files.watch(
-        {fileId, supportsAllDrives:true}, callback
-      )
     }
 
     // download file from google drive
