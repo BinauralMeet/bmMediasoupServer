@@ -5,7 +5,12 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage,
    MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage,
    MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage,
-   MSStreamingStartMessage, MSStreamingStopMessage, MSCloseTransportMessage} from './MediaServer/MediaMessages'
+   MSStreamingStartMessage, MSStreamingStopMessage, MSCloseTransportMessage,
+   MSServerStatusMessage,
+   TransportStatus,
+   ProducerStatus,
+   ConsumerStatus,
+   MSServerStatusStream} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
 import { debuglog } from 'util'
@@ -270,6 +275,26 @@ startMediasoup().then(({worker, router}) => {
   handlers.set('streamingStop',(base, ws)=>{
     const msg = base as MSStreamingStopMessage
     streamingStop(router, msg)
+  })
+
+  //  hander for debug log
+  handlers.set('serverStatus', (base, ws) => {
+    const msg = base as MSServerStatusMessage
+    if (msg.statusType === 'streams'){
+      const status:MSServerStatusStream = {
+        transports: Array.from(transports.values()).map<TransportStatus>(v =>
+          ({id:v.id, appData: v.appData})),
+        producers: Array.from(producers.values()).map<ProducerStatus>(v =>
+          ({id:v.id, appData: v.appData,
+            closed: v.closed, paused: v.paused, kind: v.kind, type: v.type})),
+        consumers: Array.from(consumers.values()).map<ConsumerStatus>(v =>
+          ({id:v.id, appData: v.appData,
+            closed: v.closed, paused: v.paused, kind: v.kind, type: v.type,
+            producerId: v.producerId}))
+      }
+      msg.status = status
+      send(msg, ws)
+    }
   })
 
   //  function defines which use worker etc.

@@ -9,13 +9,13 @@ export interface PingPong {
   pongWait: number
 }
 
-export interface Worker extends PingPong{
+export interface MedServer extends PingPong{
   id: string
   stat:{
     load: number
   }
 }
-export function deleteWorker(worker: Worker){
+export function deleteWorker(worker: MedServer){
   mainServer.workers.delete(worker.id)
 }
 export function getVacantWorker(){
@@ -34,7 +34,7 @@ export interface Peer extends MSRemotePeer{
   lastSent: number
   interval?: NodeJS.Timeout
   room?: Room
-  worker?: Worker
+  worker?: MedServer
   transports:string[]
 }
 

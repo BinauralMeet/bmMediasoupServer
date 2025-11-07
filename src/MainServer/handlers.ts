@@ -3,9 +3,10 @@ import { googleServer } from "../GoogleServer/GoogleServer";
 import { MSCheckAdminMessage, MSCloseProducerMessage, MSCloseTransportMessage,
    MSCreateTransportReply, MSMessage, MSMessageType, MSPeerMessage, MSProduceTransportReply,
     MSRemoteUpdateMessage, MSRoomMessage, MSAddAdminMessage, MSUploadFileMessage,
-    MSWorkerUpdateMessage } from "../MediaServer/MediaMessages";
+    MSWorkerUpdateMessage,
+    MSServerStatusMessage} from "../MediaServer/MediaMessages";
 import { findRoomLoginInfo, loginInfo } from "./mainLogin";
-import { deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWorker, mainServer, remoteUpdated, sendMSMessage } from "./mainServer";
+import { deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWorker, mainServer, remoteUpdated, resolveMessage, sendMSMessage } from "./mainServer";
 import { Peer, toMSRemotePeer } from "./types";
 import { consoleDebug, consoleError, stamp, userLog } from "./utils";
 
@@ -246,7 +247,10 @@ export function initHandlers(){
       worker.stat.load = msg.load
     }
   })
-
+  handlersForWorker.set('serverStatus',(base, ws)=>{
+    const msg = base as MSServerStatusMessage
+    resolveMessage(msg)
+  })
 
   //-------------------------------------------------------
   //  bridging(peer->worker / worker->peer) handlers
@@ -346,3 +350,4 @@ export function initHandlers(){
   setRelayHandlers('streamingStart')
   setRelayHandlers('streamingStop')
 }
+

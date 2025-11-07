@@ -5,7 +5,7 @@ import debugModule from 'debug'
 import {MSConnectMessage, MSPreConnectMessage} from './MediaServer/MediaMessages'
 import {mainServer, sendMSMessage, processPeer, processWorker,
   addConnectListener, addWorkerListener, makeUniqueId} from './MainServer/mainServer'
-import {Worker} from './MainServer/types'
+import {MedServer} from './MainServer/types'
 import {addDataListener, checkDataLogin, DataSocket, processData} from './DataServer/dataServer'
 import {dataServer} from './DataServer/Stores'
 import {addPositionListener} from './PositionServer/positionServer'
@@ -56,7 +56,7 @@ function onFirstMessage(messageData: websocket.MessageEvent){
     msg.peer = unique
     sendMSMessage(msg, ws)
     const {type, peer, ...msg_} = msg
-    const worker:Worker = {...msg_, id:msg.peer, ws, stat:{load:0}, pongWait: 0}
+    const worker:MedServer = {...msg_, id:msg.peer, ws, stat:{load:0}, pongWait: 0}
     mainServer.workers.set(msg.peer, worker)
     consoleLog(`addWorker ${msg.peer}`)
     ws.removeEventListener('message', onFirstMessage)

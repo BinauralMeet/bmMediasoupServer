@@ -3,7 +3,7 @@ import {MSMessage, MSMessageType, MSPeerMessage, MSRemoteUpdateMessage, MSCloseT
   MSCloseProducerMessage, MSRemoteLeftMessage, MSConnectMessage} from '../MediaServer/MediaMessages'
 import {googleServer} from "../GoogleServer/GoogleServer";
 import {findRoomLoginInfo, loginInfo} from './mainLogin';
-import {Peer, Worker, Room, PingPong, deleteWorker, getVacantWorker, toMSRemotePeer} from './types';
+import {Peer, MedServer, Room, PingPong, deleteWorker, getVacantWorker, toMSRemotePeer} from './types';
 import {CONSOLE_DEBUG, consoleDebug, consoleError, consoleLog } from './utils';
 import {initHandlers} from './handlers';
 
@@ -23,9 +23,9 @@ const config = require('../../config');
 
 const peers = new Map<string, Peer>()
 const rooms = new Map<string, Room>()
-const workers = new Map<string, Worker>()
+const workers = new Map<string, MedServer>()
 export const handlersForPeer = new Map<MSMessageType, (base:MSMessage, peer: Peer)=>void>()
-export const handlersForWorker = new Map<MSMessageType, (base:MSMessage, worker: Worker)=>void>()
+export const handlersForWorker = new Map<MSMessageType, (base:MSMessage, worker: MedServer)=>void>()
 export const mainServer = {
   peers,
   rooms,
@@ -145,7 +145,7 @@ function remoteLeft(ps: string[], room:Room){
 //-------------------------------------------------------
 //  message queue and process messages
 //
-interface MessageAndWorker {msg: MSMessage, worker: Worker}
+interface MessageAndWorker {msg: MSMessage, worker: MedServer}
 const workerQueue = new Array<MessageAndWorker>
 export function processWorker():boolean{
   const top = workerQueue.shift()
@@ -297,7 +297,7 @@ function addPingPongListner(pingPong: PingPong){
   })
   pingPong.interval = setInterval(()=>{
     if (pingPong.pongWait >= 3){
-      const id = (pingPong as Worker).id
+      const id = (pingPong as MedServer).id
       console.warn(`WS for worker '${id}' timed out. pong wait count = ${pingPong.pongWait}.`)
       pingPong.ws.terminate()
       clearInterval(pingPong.interval)
@@ -314,7 +314,7 @@ function addPingPongListner(pingPong: PingPong){
     }
   })
 }
-export function addWorkerListener(worker: Worker){
+export function addWorkerListener(worker: MedServer){
   addPingPongListner(worker)
   worker.ws.addEventListener('close', () =>{
     consoleDebug(`WS for worker ${worker.id} closed.`)
@@ -337,5 +337,42 @@ export function makeUniqueId(id:string, map: Map<string, any>){
     if (!map.has(unique)){
       return unique
     }
+  }
+}
+
+
+var messageNumber = 0
+function setMessageSerialNumber(msg: MSMessage){
+  messageNumber++;
+  if (msg.sn !== undefined){
+    console.log(`setMessageSerialNumber error: msg ${msg.type} already have sn`, msg)
+  }
+  msg.sn = messageNumber
+}
+
+interface PromisePack {
+  worker: MedServer,
+  resolve: (worker:MedServer, base:MSMessage, a:any)=>void,
+  reject?: (reson:any)=>void,
+  arg: any
+}
+const promises = new Map<number, PromisePack>()
+function setMessagePromise(worker:MedServer, msg:MSMessage, resolve:(worker:MedServer, base:MSMessage, a:any)=>void, reject?:(reson:any)=>void, arg?:any){
+  setMessageSerialNumber(msg)
+  promises.set(msg.sn!, {worker, resolve, reject, arg})
+}
+export function sendWithPromise(worker: MedServer, msg:MSMessage, resolve:(worker:MedServer, base:MSMessage, a:any)=>void, reject?:(reson:any)=>void, arg?:any){
+  setMessagePromise(worker, msg, resolve, reject, arg)
+  worker.ws.send(JSON.stringify(msg))
+}
+export function resolveMessage(m: MSMessage){
+  const sn = m.sn
+  delete m.sn
+  if (sn){
+    const p = promises.get(sn)
+    if (p){
+      p.resolve(p.worker, m, p.arg)
+    }
+    promises.delete(sn)
   }
 }

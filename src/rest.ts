@@ -1,8 +1,10 @@
 import express from 'express';
 import {dataServer} from './DataServer/Stores'
-import {mainServer} from './MainServer/mainServer'
+import {mainServer, sendMSMessage, sendWithPromise} from './MainServer/mainServer'
 import {messageLoad} from './main';
 import {performance} from 'perf_hooks'
+import { MSServerStatusMessage, MSMessage, MSServerStatusStream } from './MediaServer/MediaMessages';
+import { MedServer } from './MainServer/types';
 
 export const restApp = express();
 const cors = require('cors');
@@ -75,4 +77,42 @@ restApp.get('/peer', function(req, res) {
     return peerData
   })
   res.json(obj)
+})
+
+restApp.get('/server/streams', function(req, res) {
+  console.log(`get /server/streams  req:${req.path}`)
+  const msg:MSServerStatusMessage = {
+    type:'serverStatus',
+    statusType:'streams'
+  }
+  interface Arg {
+    numMServ: number
+  }
+  const arg:Arg = {
+    numMServ:mainServer.workers.size
+  }
+  mainServer.workers.forEach(worker => {
+    sendWithPromise(worker, msg, resolve, reject, arg)
+    interface OneStatus{
+      workerId: string
+      status: MSServerStatusStream
+    }
+    const allStatus = Array<OneStatus>()
+    function resolve(worker: MedServer, base: MSMessage, a:any){
+      const arg = a as Arg
+      const msg = base as MSServerStatusMessage
+      const one:OneStatus = {
+        workerId: worker.id,
+        status: msg.status!
+      }
+      allStatus.push(one)
+      arg.numMServ--
+      if (arg.numMServ === 0){
+        //  Answer to rest requst
+        res.json(allStatus)
+      }
+    }
+    function reject(){
+    }
+  })
 })
