@@ -43,12 +43,11 @@ export class GoogleServer {
     // Google Oauth2 login
     async login() {
       try {
-        const jwtClient = new google.auth.JWT(
-          this._clientId,
-          undefined,
-          this._privateKey,
-          this._scopes
-        );
+        const jwtClient = new google.auth.JWT({
+          email:this._clientId,
+          key:this._privateKey,
+          scopes: this._scopes
+        });
         const auth = await jwtClient.authorize();
         this._auth = jwtClient;
       } catch (error) {

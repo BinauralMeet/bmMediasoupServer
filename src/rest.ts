@@ -80,39 +80,43 @@ restApp.get('/peer', function(req, res) {
 })
 
 restApp.get('/server/streams', function(req, res) {
-  console.log(`get /server/streams  req:${req.path}`)
-  const msg:MSServerStatusMessage = {
-    type:'serverStatus',
-    statusType:'streams'
-  }
+  //console.log(`get /server/streams  req:${req.path}`)
+
+  // The resolve function for SendWithPromise() to all servers
   interface Arg {
     numMServ: number
   }
   const arg:Arg = {
     numMServ:mainServer.workers.size
   }
+  interface OneStatus{
+    workerId: string
+    status: MSServerStatusStream
+  }
+  const allStatus = Array<OneStatus>()
+  function resolve(worker: MedServer, base: MSMessage, a:any){
+    const arg = a as Arg
+    const msg = base as MSServerStatusMessage
+    const one:OneStatus = {
+      workerId: worker.id,
+      status: msg.status!
+    }
+    allStatus.push(one)
+    arg.numMServ--
+    if (arg.numMServ === 0){
+      //  Answer to rest requst
+      res.json(allStatus)
+    }
+  }
+  function reject(){
+  }
+
+  //  Send request to all Media Servers
+  const msg:MSServerStatusMessage = {
+    type:'serverStatus',
+    statusType:'streams'
+  }
   mainServer.workers.forEach(worker => {
     sendWithPromise(worker, msg, resolve, reject, arg)
-    interface OneStatus{
-      workerId: string
-      status: MSServerStatusStream
-    }
-    const allStatus = Array<OneStatus>()
-    function resolve(worker: MedServer, base: MSMessage, a:any){
-      const arg = a as Arg
-      const msg = base as MSServerStatusMessage
-      const one:OneStatus = {
-        workerId: worker.id,
-        status: msg.status!
-      }
-      allStatus.push(one)
-      arg.numMServ--
-      if (arg.numMServ === 0){
-        //  Answer to rest requst
-        res.json(allStatus)
-      }
-    }
-    function reject(){
-    }
   })
 })

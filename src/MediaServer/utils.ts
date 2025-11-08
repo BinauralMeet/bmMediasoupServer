@@ -1,4 +1,4 @@
-import { MediaKind, RtpParameters } from 'mediasoup/node/lib/RtpParameters';
+import { MediaKind, RtpParameters } from 'mediasoup/node/lib/types';
 import { Readable } from 'stream'
 import * as mediasoup from 'mediasoup'
 

@@ -5,7 +5,7 @@ import {getPort, releasePort} from './port'
 import * as mediasoup from 'mediasoup'
 import { producers } from '../media';
 import { assert } from 'console'
-import { RtpCapabilities, RtpCodecCapability } from 'mediasoup/node/lib/RtpParameters'
+import { RtpCapabilities, RtpCodecCapability } from 'mediasoup/node/lib/types'
 
 const config = require('../../config');
 //console.log(JSON.stringify(config))
