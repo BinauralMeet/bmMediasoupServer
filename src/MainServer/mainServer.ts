@@ -1,6 +1,7 @@
 import websocket from 'ws'
 import {MSMessage, MSMessageType, MSPeerMessage, MSRemoteUpdateMessage, MSCloseTransportMessage,
-  MSCloseProducerMessage, MSRemoteLeftMessage, MSConnectMessage} from '../MediaServer/MediaMessages'
+  MSCloseProducerMessage, MSRemoteLeftMessage, MSConnectMessage,
+  MSPeerLeftMessage} from '../MediaServer/MediaMessages'
 import {googleServer} from "../GoogleServer/GoogleServer";
 import {findRoomLoginInfo, loginInfo} from './mainLogin';
 import {Peer, MedServer, Room, PingPong, deleteWorker, getVacantWorker, toMSRemotePeer} from './types';
@@ -53,12 +54,15 @@ export function sendMSMessage<MSM extends MSMessage>(msg: MSM, ws: websocket.Web
   ws.send(JSON.stringify(msg))
 }
 
-export function sendRoom<MSM extends MSMessage>(msg: MSM, room:Room){
+export function sendToRoom<MSM extends MSMessage>(msg: MSM, room:Room){
   if (room?.peers){
     for(const peer of room.peers.values()){
       peer.ws.send(JSON.stringify(msg))
     }
   }
+}
+export function sendToWorker<MSM extends MSMessage>(msg: MSM, peer: Peer){
+  peer.worker?.ws.send(JSON.stringify(msg))
 }
 
 export function getPeerAndWorker(id: string){
@@ -101,6 +105,7 @@ export function deletePeer(peer: Peer){
   peer.transports.forEach(transport => {
     const msg: MSCloseTransportMessage= {
       type: 'closeTransport',
+      peer: peer.peer,
       transport,
     }
     consoleDebug(`Send ${msg.type} for ${msg.transport}`)
@@ -129,7 +134,7 @@ export function remoteUpdated(ps: Peer[], room: Room){
     type:'remoteUpdate',
     remotes: ps.map(p=>toMSRemotePeer(p))
   }
-  sendRoom(remoteUpdateMsg, room)
+  sendToRoom(remoteUpdateMsg, room)
 }
 function remoteLeft(ps: string[], room:Room){
   if (!ps.length) return
@@ -137,7 +142,17 @@ function remoteLeft(ps: string[], room:Room){
     type:'remoteLeft',
     remotes: ps
   }
-  sendRoom(remoteLeftMsg, room)
+  sendToRoom(remoteLeftMsg, room)
+  ps.forEach(p => {
+    const peer = peers.get(p)
+    if (peer) {
+      const peerLeftMsg:MSPeerLeftMessage = {
+        type: 'peerLeft',
+        peer: p
+      }
+      sendToWorker(peerLeftMsg, peer)
+    }
+  })
 }
 
 

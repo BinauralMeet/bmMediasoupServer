@@ -32,6 +32,32 @@ let workerLoad = 0
 let lastPingTimestamp = 0
 
 const transports = new Map<string, mediasoup.types.Transport>()
+interface PeerInfo{
+  transports: string[]
+}
+class Peers extends Map<string, PeerInfo>{
+  constructor(){
+    super()
+  }
+  addTransport(peerId:string, transId: string){
+    const peer = this.get(peerId)
+    if (peer){
+      peer?.transports.push(transId)
+    }else{
+      this.set(peerId, {transports:[transId]})
+    }
+  }
+  removeTransport(peerId:string, transId:string){
+    const peer = this.get(peerId)
+    if (!peer) return false
+    peer.transports = peer.transports.filter((tid) => tid!=transId)
+    if (peer.transports.length === 0){
+      this.delete(peerId)
+    }
+  }
+}
+
+const peers = new Peers()
 export const producers = new Map<string, mediasoup.types.Producer>()
 const consumers = new Map<string, mediasoup.types.Consumer>()
 const handlers = new Map<MSMessageType, (base:MSMessage, ws:websocket.WebSocket)=>void>()
@@ -113,6 +139,7 @@ startMediasoup().then(({worker, router}) => {
         ]
       }
       transports.set(transport.id, transport)
+      peers.addTransport(msg.peer, transport.id)
       send(sendMsg, ws)
     });
   })
@@ -151,11 +178,28 @@ startMediasoup().then(({worker, router}) => {
         consoleError(`closetransport: server-side transport ${msg.transport} not found`)
       }else{
         consoleDebug(`Transport ${msg.transport} closed.`, msg)
+        peers.removeTransport(msg.peer, msg.transport)
         transports.delete(msg.transport)
         transport.close()
       }
     } catch (e) {
       consoleError('error in /signaling/closeTransport', e);
+    }
+  })
+  handlers.set('peerLeft', (base, ws) => {
+    const msg = base as MSPeerMessage
+    try {
+      const peer = peers.get(msg.peer)
+      if (peer){
+        peer.transports.forEach((transId) => {
+          const transport = transports.get(transId)
+          transports.delete(transId)
+          transport?.close()
+        })
+        peers.delete(msg.peer)
+      }
+    } catch (e) {
+      consoleError('error in /signaling/peerLeft', e);
     }
   })
 
@@ -230,9 +274,9 @@ startMediasoup().then(({worker, router}) => {
           log(`consumer's transport closed`, consumer.id)
           closeConsumer(consumer)
         })
-          consumer.on('producerclose', () => {
-            log(`consumer's producer closed`, consumer.id);
-            closeConsumer(consumer)
+        consumer.on('producerclose', () => {
+          log(`consumer's producer closed`, consumer.id);
+          closeConsumer(consumer)
         })
         sendMsg.consumer = consumer.id
         sendMsg.rtpParameters = consumer.rtpParameters
