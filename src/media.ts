@@ -10,7 +10,9 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    TransportStatus,
    ProducerStatus,
    ConsumerStatus,
-   MSServerStatusStream} from './MediaServer/MediaMessages'
+   MSServerStatusStream,
+   MSRestartIceMessage,
+   MSRestartIceReply} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
 import { debuglog } from 'util'
@@ -31,7 +33,7 @@ let workerId = ''
 let workerLoad = 0
 let lastPingTimestamp = 0
 
-const transports = new Map<string, mediasoup.types.Transport>()
+const transports = new Map<string, mediasoup.types.WebRtcTransport>()
 interface PeerInfo{
   transports: string[]
 }
@@ -169,6 +171,28 @@ startMediasoup().then(({worker, router}) => {
       sendMsg.error = `${e}`
       send(sendMsg, ws)
     }
+  })
+  handlers.set('restartIce', (base, ws) => {
+    const msg = base as MSRestartIceMessage
+    const reply:MSRestartIceReply = {
+      type: 'restartIce',
+      peer: msg.peer,
+      sn: msg.sn,
+      transport: msg.transport,
+    }
+    const transport = transports.get(msg.transport)
+    if (!transport) {
+      reply.error = `server-side transport ${msg.transport} not found`
+      send(reply, ws)
+      return
+    }
+    transport.restartIce().then((iceParameters) => {
+      reply.iceParameters = iceParameters
+      send(reply, ws)
+    }).catch((e) => {
+      reply.error = `${e}`
+      send(reply, ws)
+    })
   })
   handlers.set('closeTransport', (base, ws) => {
     const msg = base as MSCloseTransportMessage

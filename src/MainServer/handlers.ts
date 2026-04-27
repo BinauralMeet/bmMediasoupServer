@@ -302,6 +302,7 @@ export function initHandlers(){
   })
 
   setRelayHandlers('connectTransport')
+  setRelayHandlers('restartIce')
 
   handlersForPeer.set('produceTransport', relayPeerToWorker)
   handlersForWorker.set('produceTransport', (base, worker)=>{
