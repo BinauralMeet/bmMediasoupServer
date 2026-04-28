@@ -419,6 +419,10 @@ startMediasoup().then(({worker, router}) => {
     ws.onerror = (ev)=>{
       consoleLog(`ws error ${ev.message}, state:${ws.readyState}`)
     }
+    ws.on('close', ()=>{
+      consoleLog('Connection to main server closed. Reconnecting...')
+      connectToMain()
+    })
     ws.on('ping', ()=>{
       debuglog('ping received.')
       ws.pong()
@@ -430,12 +434,15 @@ startMediasoup().then(({worker, router}) => {
   consoleLog('connecting to main server')
   const TIMEOUT = config.workerWebsocketTimeout
   setInterval(()=>{
-    if (ws && ws.readyState && ws.readyState === ws.OPEN){
+    if (ws && ws.readyState === ws.OPEN){
       if (lastPingTimestamp + TIMEOUT < Date.now()){
         consoleLog('Ping timeout. Terminate websocket.')
         ws.terminate()
       }
-    }else{
+    }else if (!ws || ws.readyState === ws.CLOSED){
+      // Reconnect only when fully closed (not while CONNECTING or CLOSING).
+      // The onclose handler covers most reconnection cases; this catches
+      // the initial startup and any edge-case where onclose didn't fire.
       consoleLog('Try to connect to main server.')
       connectToMain()
     }
