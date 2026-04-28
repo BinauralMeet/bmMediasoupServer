@@ -5,7 +5,9 @@ export const CONSOLE_DEBUG = false
 export const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 export const consoleLog = console.log
 export const consoleError = console.log
-export const userLogFile = fs.createWriteStream('/var/log/pm2/main_user.log', {flags:'a', encoding:'utf8'});
+const userLogPath = process.env.USER_LOG_FILE ?? '/var/log/pm2/main_user.log'
+fs.mkdirSync(require('path').dirname(userLogPath), {recursive: true})
+export const userLogFile = fs.createWriteStream(userLogPath, {flags:'a', encoding:'utf8'});
 export const userLog = new Console(userLogFile)
 export function stamp(){
   const date = new Date()

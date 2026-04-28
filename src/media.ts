@@ -142,6 +142,24 @@ startMediasoup().then(({worker, router}) => {
       }
       transports.set(transport.id, transport)
       peers.addTransport(msg.peer, transport.id)
+
+      transport.on('icestatechange', (iceState: string) => {
+        if (iceState === 'disconnected' || iceState === 'failed') {
+          consoleLog(`Transport ${transport.id} ICE ${iceState}: server-initiated restart`)
+          transport.restartIce().then((iceParameters) => {
+            const restartMsg: MSRestartIceReply = {
+              type: 'restartIce',
+              peer: transport.appData.peer as string,
+              transport: transport.id,
+              iceParameters,
+            }
+            send(restartMsg, ws)
+          }).catch((e: any) => {
+            consoleError(`Server-initiated ICE restart failed for ${transport.id}:`, e)
+          })
+        }
+      })
+
       send(sendMsg, ws)
     });
   })
