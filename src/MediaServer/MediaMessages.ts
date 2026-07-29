@@ -1,3 +1,4 @@
+//  GENERATED from binaural-meet/src/models/conference/MediaMessages.ts by getSourceFromBM.sh -- do not hand-edit.
 import * as mediasoup from 'mediasoup'
 export type MSMessageType =
   'dataConnect' | 'positionConnect' | 'position' |

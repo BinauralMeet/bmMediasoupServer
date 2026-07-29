@@ -1,3 +1,4 @@
+//  GENERATED from binaural-meet/src/models/utils/coordinates.ts by getSourceFromBM.sh -- do not hand-edit.
 export interface Pose2DMap {
   position: [number, number]
   orientation: number

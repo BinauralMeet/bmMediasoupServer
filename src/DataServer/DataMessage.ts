@@ -1,3 +1,4 @@
+//  GENERATED from binaural-meet/src/models/conference/DataMessage.ts by getSourceFromBM.sh -- do not hand-edit.
 export interface BMMessage {
   t: string,  //  type
   r?: string,  //  room id

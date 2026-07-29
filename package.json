@@ -27,6 +27,7 @@
   },
   "scripts": {
     "build": "npx tsc",
+    "check:shared-types": "cd src && ./getSourceFromBM.sh --check",
     "main": "ts-node-dev --respawn  --inspect=8228 -- src/main.ts",
     "media": "set NODE_TLS_REJECT_UNAUTHORIZED=0&ts-node-dev --respawn --inspect=8229 -- src/media.ts",
     "wscat": "set NODE_TLS_REJECT_UNAUTHORIZED=0&wscat -c wss://localhost:3000",

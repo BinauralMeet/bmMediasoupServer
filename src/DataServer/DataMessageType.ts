@@ -1,3 +1,4 @@
+//  GENERATED from binaural-meet/src/models/conference/DataMessageType.ts by getSourceFromBM.sh -- do not hand-edit.
 //  messages forward only when participants are in the range.
 export const ParticipantMessageType = {
   PARTICIPANT_AFK: 'p_afk',                     //  boolean
