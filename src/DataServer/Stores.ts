@@ -97,6 +97,15 @@ export class ParticipantStore {
   //  (t, p) slot and clobber each other before either is sent. Mirrors the client-side fix in
   //  DataConnection.ts's sendMessage(). Every other message type omits this and is unaffected.
   pushOrUpdateMessage(msg: Message, mergeKeyExtra?: string){
+    //  CHAT_MESSAGE is a log of discrete events, not a "latest value wins" state field --
+    //  unlike every other type here, two chat messages queued to the same peer before a
+    //  flush must NOT collapse into one (verified live: without this, a rapid burst of
+    //  chat messages to the same recipient silently dropped all but the last). Mirrors the
+    //  identical fix on the client side (DataConnection.ts's sendMessage()).
+    if (msg.t === MessageType.CHAT_MESSAGE){
+      this.messagesTo.push(msg)
+      return
+    }
     const found = this.messagesTo.findIndex(m => {
       if (m.t !== msg.t || m.p !== msg.p) return false
       if (mergeKeyExtra === undefined) return true
