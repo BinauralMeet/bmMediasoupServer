@@ -26,7 +26,7 @@ const config = require('../config');
 const CONSOLE_DEBUG = false
 const consoleDebug = CONSOLE_DEBUG ? console.debug : (... arg:any[]) => {}
 const consoleLog = console.log
-const consoleError = console.log
+const consoleError = console.error
 
 let ws : websocket.WebSocket
 let workerId = ''
