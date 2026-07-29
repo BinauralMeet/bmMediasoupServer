@@ -1,5 +1,6 @@
 import websocket from 'ws'
 import https from 'https'
+import http from 'http'
 import fs from 'fs'
 import debugModule from 'debug'
 import {MSConnectMessage, MSPreConnectMessage} from './MediaServer/MediaMessages'
@@ -69,20 +70,23 @@ function onFirstMessage(messageData: websocket.MessageEvent){
 
 function main() {
   Object.assign(global, {d:{mainServer, dataServer}})
-  // start https server
+  // start http(s) server
   consoleLog('starting wss server');
   try {
-    const tls = {
+    //  config.useHttp: for local/dev setups sitting behind a TLS-terminating reverse
+    //  proxy that only speaks plain HTTP to the backend (e.g. this sandbox's aigw
+    //  proxy). Not used for real deploys, which terminate TLS here.
+    const useHttp = !!config.useHttp
+    const server = useHttp ? http.createServer() : https.createServer({
       cert: fs.readFileSync(config.sslCrt),
       key: fs.readFileSync(config.sslKey),
-    };
-    const httpsServer = https.createServer(tls);
-    httpsServer.on('error', (e) => {
-      consoleError('https server error,', e.message);
+    });
+    server.on('error', (e:any) => {
+      consoleError(`${useHttp ? 'http' : 'https'} server error,`, e.message);
     });
 
-    const wss = new websocket.Server({server: httpsServer})
-    httpsServer.on('request', (req, res) =>{
+    const wss = new websocket.Server({server})
+    server.on('request', (req, res) =>{
       //console.log(`request: ${JSON.stringify(req.headers)}`)
       restApp(req, res)
     })
@@ -92,9 +96,9 @@ function main() {
     })
 
     return new Promise<void>((resolve) => {
-      httpsServer.listen(config.httpPort, config.httpIp, () => {
+      server.listen(config.httpPort, config.httpIp, () => {
         consoleLog(`server is running and listening on ` +
-                    `https://${config.httpIp}:${config.httpPort}`);
+                    `${useHttp ? 'http' : 'https'}://${config.httpIp}:${config.httpPort}`);
         //  Start process to handle queued messages
         const INTERVAL = 100
         setInterval(()=>{
