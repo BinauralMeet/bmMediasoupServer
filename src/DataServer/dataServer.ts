@@ -347,6 +347,7 @@ export function processData():boolean{
   if (top){ //  peer
     if (!top.msg.t){
       console.error(`Invalid message: ${top.msg}`)
+      return true
     }
 
     //  prepare participant and room
@@ -373,7 +374,11 @@ export function processData():boolean{
     if (participant && room){
       const handler = messageHandlers.get(top.msg.t)
       if (handler){
-        handler(top.msg, participant, room)
+        try{
+          handler(top.msg, participant, room)
+        }catch(error){
+          console.error(`Handler for ${top.msg.t} threw an error: ${error}`, top.msg)
+        }
       }else{
         console.error(`No message handler for ${top.msg.t} - ${top.msg}`)
       }
