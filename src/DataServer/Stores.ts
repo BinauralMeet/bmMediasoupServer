@@ -91,8 +91,21 @@ export class ParticipantStore {
   contentsInfoSent:Map<Content, ContentInfoSent> = new Map()
 
   //  add message to send
-  pushOrUpdateMessage(msg: Message){
-    const found = this.messagesTo.findIndex(m => m.t === msg.t && m.p === msg.p)
+  //  mergeKeyExtra: for message types that multiplex several differently-named things under one
+  //  type (ROOM_PROP, currently the only such type -- see its handler in dataServer.ts), pass the
+  //  name being updated so two different properties queued back-to-back don't collide on the same
+  //  (t, p) slot and clobber each other before either is sent. Mirrors the client-side fix in
+  //  DataConnection.ts's sendMessage(). Every other message type omits this and is unaffected.
+  pushOrUpdateMessage(msg: Message, mergeKeyExtra?: string){
+    const found = this.messagesTo.findIndex(m => {
+      if (m.t !== msg.t || m.p !== msg.p) return false
+      if (mergeKeyExtra === undefined) return true
+      try{
+        return (JSON.parse(m.v) as [string, string])[0] === mergeKeyExtra
+      }catch{
+        return false
+      }
+    })
     if (found >= 0){
       //  same message type is already in the queue (messagesTo).
       if (ObjectArrayMessageTypes.has(msg.t)){

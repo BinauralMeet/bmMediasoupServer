@@ -76,7 +76,7 @@ messageHandlers.set(MessageType.ROOM_PROP, (msg, _from, room) => {
     room.properties.set(key, val)
   }
   const remotes = Array.from(room.participants.values()).filter(remote => remote.id !== msg.p)
-  remotes.forEach(remote => remote.messagesTo.push(msg))
+  remotes.forEach(remote => remote.pushOrUpdateMessage(msg, key))
 })
 
 messageHandlers.set(MessageType.REQUEST_ALL, (_msg, from, room) => {
