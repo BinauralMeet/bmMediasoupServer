@@ -16,6 +16,7 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
 import { debuglog } from 'util'
+import {Peers} from './MediaServer/Peers'
 
 const log = debugModule('bmMsE');
 const warn = debugModule('bmMsE:WARN');
@@ -34,31 +35,6 @@ let workerLoad = 0
 let lastPingTimestamp = 0
 
 const transports = new Map<string, mediasoup.types.WebRtcTransport>()
-interface PeerInfo{
-  transports: string[]
-}
-class Peers extends Map<string, PeerInfo>{
-  constructor(){
-    super()
-  }
-  addTransport(peerId:string, transId: string){
-    const peer = this.get(peerId)
-    if (peer){
-      peer?.transports.push(transId)
-    }else{
-      this.set(peerId, {transports:[transId]})
-    }
-  }
-  removeTransport(peerId:string, transId:string){
-    const peer = this.get(peerId)
-    if (!peer) return false
-    peer.transports = peer.transports.filter((tid) => tid!=transId)
-    if (peer.transports.length === 0){
-      this.delete(peerId)
-    }
-  }
-}
-
 const peers = new Peers()
 export const producers = new Map<string, mediasoup.types.Producer>()
 const consumers = new Map<string, mediasoup.types.Consumer>()
