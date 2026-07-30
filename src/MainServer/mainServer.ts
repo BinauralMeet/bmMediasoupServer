@@ -261,9 +261,11 @@ export function addConnectListener(ws: websocket){
 }
 
 
-const PEER_TIMEOUT = config.websocketTimeout
+export const PEER_TIMEOUT = config.websocketTimeout
 
-function addPeerListener(peer: Peer){
+//  exported for testing -- see MainServer/__tests__/mainServer.test.ts, which guards against
+//  reintroducing the close()-vs-terminate() peer-timeout bug (see the comment at the call site).
+export function addPeerListener(peer: Peer){
   //console.log(`addPeerListener ${peer.peer} called.`)
   peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
     const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
@@ -277,7 +279,15 @@ function addPeerListener(peer: Peer){
     //  check last receive time
     if (now-peer.lastReceived > PEER_TIMEOUT){
       console.warn(`Websocket for peer ${peer.peer} has been timed out.`)
-      peer.ws.close()
+      //  terminate(), not close(): close() starts a graceful closing handshake that waits for
+      //  the peer to acknowledge -- but a peer we just detected as unresponsive (that's the
+      //  whole reason we're here) may never send that acknowledgement, so the 'close' event
+      //  this depends on to fire deletePeer() (via 'leave_error') could be delayed indefinitely
+      //  or never fire at all, leaking this peer's transports/producers/consumers in media.ts
+      //  forever. terminate() destroys the underlying socket immediately, unconditionally.
+      //  Same reasoning already applied to the worker ping/pong timeout below and to media.ts's
+      //  own reconnect-to-main timeout -- this was the one inconsistent spot.
+      peer.ws.terminate()
     }
     //  send pong packet when no packet sent to peer for long time.
     if (now-peer.lastSent > PEER_TIMEOUT/4){
