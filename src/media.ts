@@ -119,6 +119,16 @@ startMediasoup().then(({worker, router}) => {
       transports.set(transport.id, transport)
       peers.addTransport(msg.peer, transport.id)
       send(sendMsg, ws)
+    }).catch((e) => {
+      consoleError(`createTransport failed for peer ${msg.peer}:`, e);
+      const errMsg: MSCreateTransportReply = {
+        type: 'createTransport',
+        peer: msg.peer,
+        sn: msg.sn,
+        dir: msg.dir,
+        error: `${e}`,
+      }
+      send(errMsg, ws)
     });
   })
 
@@ -139,6 +149,10 @@ startMediasoup().then(({worker, router}) => {
         send(sendMsg, ws)
       }else{
         transport.connect({dtlsParameters: msg.dtlsParameters}).then(()=>{
+          send(sendMsg, ws)
+        }).catch((e) => {
+          consoleError('error in connect-transport', e);
+          sendMsg.error = `${e}`
           send(sendMsg, ws)
         })
       }
@@ -233,6 +247,10 @@ startMediasoup().then(({worker, router}) => {
           send(sendMsg, ws)
           updateWorkerLoad()
         }
+      }).catch((e) => {
+        consoleError(`produceTransport failed for peer ${msg.peer}:`, e);
+        sendMsg.error = `${e}`
+        send(sendMsg, ws)
       })
     }
   })

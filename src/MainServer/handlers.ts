@@ -286,13 +286,15 @@ export function initHandlers(){
     const peer = getPeer(msg.peer)
     if (!peer){
       consoleError(`peer '${msg.peer}' not found.`)
-      const cmsg: MSCloseTransportMessage= {
-        type: 'closeTransport',
-        peer: msg.peer,
-        transport: msg.transport,
-      }
-      if (worker?.ws){
-        sendMSMessage(cmsg, worker.ws)
+      if (msg.transport){
+        const cmsg: MSCloseTransportMessage= {
+          type: 'closeTransport',
+          peer: msg.peer,
+          transport: msg.transport,
+        }
+        if (worker?.ws){
+          sendMSMessage(cmsg, worker.ws)
+        }
       }
       return
     }
