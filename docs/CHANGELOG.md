@@ -5,6 +5,16 @@
 
 日付が付く記録はここに。現在形の事実は各 topic README へ。
 
+## 2026-08-05 — `GET /room/:roomId`の利用者情報漏洩を修正 {#2026-08-05-rest-leak-fix}
+
+このREST監視エンドポイント(認証無し)が`peers`/`participants`として
+peer id・participant id(利用者の表示名由来の識別子)をそのまま返していた。
+部屋名を知っている/推測できれば誰でも中の利用者を識別できてしまうため、
+`/room`(一覧)と同じ形に揃え、件数(`nPeers`/`nParticipants`)のみを返すように
+変更(`src/rest.ts`)。`contents`(共有コンテンツid)は変更なし。既存の
+クライアント(binaural-meet/vrcss)はこのエンドポイントを呼んでおらず、
+影響なし。
+
 ## 2026-08-05 — docsを新設 {#2026-08-05-docs-added}
 
 このリポジトリには`docs/`が無く、`README.md`もサーバー構成の実体(main/media

@@ -83,7 +83,9 @@ mediasoupシグナリングプロトコルを話す。`vrcss`はデータ同期�
 - 部屋ログインの要否・admin管理はGoogle Drive上の設定ファイル
   (`mainLogin.ts`/`GoogleServer.ts`)に依存する。
 - `rest.ts`(`/room`, `/peer`, `/load`, `/server/streams`)は認証無しの監視用
-  エンドポイント — 外部に直接晒す想定ではない。
+  エンドポイント — 外部に直接晒す想定ではない。いずれも件数・状態のみを返し、
+  部屋名や利用者を識別できる値(peer id・participant id)は返さない
+  (`CHANGELOG#2026-08-05-rest-leak-fix`)。
 
 ## 運用 {#ops}
 

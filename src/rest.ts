@@ -47,13 +47,13 @@ restApp.get(/\/room\/.+/g , function(req, res) {
 
   const droom = dataServer.rooms.rooms.get(roomId)
   const rroom = mainServer.rooms.get(roomId)
-  const peerKeys = rroom?.peers.keys()
-  const peerIds = peerKeys ? Array.from(peerKeys).map(p=>p.peer) : []
   const contentKeys = droom?.contents.keys()
   const contentIds = contentKeys ? Array.from(contentKeys) : []
+  //  Counts only -- peer/participant ids are derived from users' display names,
+  //  and this endpoint has no auth, so it must not reveal who is in a room.
   res.json({
-    peers: peerIds,
-    participants:droom?.participants.map(p => p.id),
+    nPeers: rroom?.peers.size ?? 0,
+    nParticipants: droom?.participants.length ?? 0,
     contents:contentIds
   })
 })
