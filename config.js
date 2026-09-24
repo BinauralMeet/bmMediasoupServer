@@ -124,16 +124,30 @@ module.exports = {
   //    {kind:'sensevoice', endpoint:'https://.../SENSEVOICE/asr',
   //     gpuStatus:'https://.../SWITCH5070TI', apiKeyEnv:'LM_HASELAB_API_KEY', timeoutMs:3000},
   //    {kind:'cpuWhisper', endpoint:'http://localhost:8190/asr', timeoutMs:8000},
+  //
+  //  Host-side setup for both entries below: `stt-translation#hostwork` / `bm/stt-sidecars`.
+  //  sensevoice's path is already publicly proxied (`lm-tool#arch`) but was **not live-tested
+  //  against the real request shape below** -- rtx5070ti's shared GPU was in `hidream` mode at
+  //  setup time, and BM deliberately never switches GPU modes itself (`#fallback`), so verifying
+  //  it would have meant kicking whoever/whatever was using ComfyUI. First real meeting that
+  //  falls through to it is the actual test; cpuWhisper was fully verified (real speech in,
+  //  correct transcript out) so the meeting keeps working either way.
   stt: {
-    backends: [],
+    backends: [
+      {kind: 'sensevoice', endpoint: 'https://lm.haselab.net/SENSEVOICE/asr',
+        gpuStatus: 'https://lm.haselab.net/SWITCH5070TI', apiKeyEnv: 'LM_HASELAB_API_KEY',
+        timeoutMs: 3000},
+      {kind: 'cpuWhisper', endpoint: 'http://localhost:8190/asr', timeoutMs: 8000},
+    ],
     maxSessions: 8,           //  concurrent transcriptions per media worker
     interimIntervalMs: 1500,  //  how often an open utterance is re-transcribed for interim text
   },
 
   //  Translation runs on the main server (it is where the room's participants and their desired
   //  languages are known). `backend` empty = original-language subtitles only.
+  //  `bm/stt-sidecars/translate_server.py`, ja<->en only (`stt-sidecars/README.md#models`).
   translation: {
-    endpoint: '',             //  POST {texts, src, dsts} -> {lang: text}
+    endpoint: 'http://localhost:8191/translate',  //  POST {texts, src, dsts} -> {lang: text}
     apiKeyEnv: '',
     timeoutMs: 5000,
     maxConcurrent: 4,
