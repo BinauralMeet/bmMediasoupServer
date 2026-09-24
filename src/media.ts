@@ -12,9 +12,12 @@ import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportRep
    ConsumerStatus,
    MSServerStatusStream,
    MSRestartIceMessage,
-   MSRestartIceReply} from './MediaServer/MediaMessages'
+   MSRestartIceReply,
+   MSSttStartMessage,
+   MSSttStopMessage} from './MediaServer/MediaMessages'
 import * as os from 'os'
 import {streamingStart, streamingStop} from './MediaServer/streaming'
+import {sttStart, sttStop, sttStopByPeer, setSttResultSender} from './MediaServer/stt'
 import { debuglog } from 'util'
 import {Peers} from './MediaServer/Peers'
 
@@ -203,6 +206,9 @@ startMediasoup().then(({worker, router}) => {
   handlers.set('peerLeft', (base, ws) => {
     const msg = base as MSPeerMessage
     try {
+      //  A session holds a UDP port and an ffmpeg child process; closing the peer's transports
+      //  below would not release either of them.
+      sttStopByPeer(msg.peer)
       const peer = peers.get(msg.peer)
       if (peer){
         peer.transports.forEach((transId) => {
@@ -339,6 +345,20 @@ startMediasoup().then(({worker, router}) => {
     streamingStop(router, msg)
   })
 
+  //  handler for speech-to-text (see the bm workspace doc `stt-translation`)
+  handlers.set('sttStart',(base, ws)=>{
+    const msg = base as MSSttStartMessage
+    setSttResultSender((result) => { send(result, ws) })
+    const error = sttStart(router, msg)
+    //  Reply either way: a client whose request was refused (no backend, too many sessions,
+    //  not its own producer) must be able to tell that from "accepted but nobody is talking".
+    const {producers:_p, ...reply} = msg
+    send({...reply, error} as MSSttStartMessage, ws)
+  })
+  handlers.set('sttStop',(base, ws)=>{
+    sttStop(base as MSSttStopMessage)
+  })
+
   //  hander for debug log
   handlers.set('serverStatus', (base, ws) => {
     const msg = base as MSServerStatusMessage
@@ -443,6 +463,8 @@ function clearMediasoup(){
 
 function closeProducer(producer:mediasoup.types.Producer) {
   consoleDebug('closing producer', producer.id, producer.appData);
+  //  The mic this session was transcribing is going away (mute-by-close, reconnect, leave).
+  if (typeof producer.appData?.peer === 'string'){ sttStopByPeer(producer.appData.peer) }
   try {
     producer.close()
     // remove this producer from our list

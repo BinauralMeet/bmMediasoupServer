@@ -1,8 +1,8 @@
 // Class to handle child process used for running FFmpeg
 import {ChildProcessWithoutNullStreams, spawn } from 'child_process';
-import {RtpInfos} from './streaming'
+import {RtpInfo, RtpInfos} from './streaming'
 import {EventEmitter} from 'events';
-import { createSdpText } from './sdp';
+import { createAudioSdpText, createSdpText } from './sdp';
 import {convertStringToStream} from './utils'
 
 const RECORD_FILE_LOCATION_PATH = process.env.RECORD_FILE_LOCATION_PATH || './files';
@@ -131,3 +131,54 @@ export class FFmpeg {
     ];
   }
 }
+
+//  Decodes one audio producer's RTP into raw 16kHz mono PCM on stdout, for stt.ts to segment and
+//  recognize. Separate from FFmpeg above because that class exists to push RTSP: its command line,
+//  its SDP (video-first) and its text-mode stdout handling are all wrong for this. What the two
+//  share -- spawn, an EventEmitter for 'process-close', feeding the SDP through stdin -- is little
+//  enough that mirroring it is clearer than parameterizing one class over two unrelated outputs.
+export class SttFFmpeg {
+  _process?: ChildProcessWithoutNullStreams
+  _observer: EventEmitter
+  private sampleRate: number
+
+  constructor (audio: RtpInfo, sampleRate: number) {
+    this.sampleRate = sampleRate
+    this._observer = new EventEmitter()
+    const sdpString = createAudioSdpText(audio)
+    this._process = spawn('ffmpeg', this._commandArgs)
+
+    //  No setEncoding here: stdout is PCM, and decoding it as utf-8 would corrupt every sample.
+    this._process.stdout?.on('data', (chunk: Buffer) => this._observer.emit('pcm', chunk))
+    this._process.stderr?.setEncoding('utf-8')
+    this._process.stderr?.on('data', data => sttFFmpegDebug('sttFFmpeg::stderr %s', data))
+    this._process.on('error', error => console.error('sttFFmpeg::error [error:%o]', error))
+    this._process.once('close', () => { this._observer.emit('process-close') })
+
+    const sdpStream = convertStringToStream(sdpString)
+    sdpStream.on('error', error => console.error('sttFFmpeg::sdpStream::error [error:%o]', error))
+    sdpStream.resume()
+    sdpStream.pipe(this._process.stdin)
+  }
+
+  kill () {
+    this._process?.kill('SIGINT')
+  }
+
+  get _commandArgs () {
+    return [
+      '-protocol_whitelist', 'pipe,udp,rtp',
+      '-fflags', '+genpts',
+      '-f', 'sdp',
+      '-i', 'pipe:0',
+      '-vn',
+      '-ac', '1',
+      '-ar', `${this.sampleRate}`,
+      '-f', 's16le',
+      'pipe:1',
+    ]
+  }
+}
+
+const STT_FFMPEG_DEBUG = false
+const sttFFmpegDebug = STT_FFMPEG_DEBUG ? console.log : (..._: any[]) => {}

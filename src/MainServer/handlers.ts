@@ -4,7 +4,9 @@ import { MSCheckAdminMessage, MSCloseProducerMessage, MSCloseTransportMessage,
    MSCreateTransportReply, MSMessage, MSMessageType, MSPeerMessage, MSProduceTransportReply,
     MSRemoteUpdateMessage, MSRoomMessage, MSAddAdminMessage, MSUploadFileMessage,
     MSWorkerUpdateMessage,
-    MSServerStatusMessage} from "../MediaServer/MediaMessages";
+    MSServerStatusMessage,
+    MSSttResultMessage} from "../MediaServer/MediaMessages";
+import { ingestSttResult } from "../DataServer/sttIngest";
 import { findRoomLoginInfo, loginInfo } from "./mainLogin";
 import { deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWorker, mainServer, remoteUpdated, resolveMessage, sendMSMessage } from "./mainServer";
 import { Peer, toMSRemotePeer } from "./types";
@@ -353,5 +355,15 @@ export function initHandlers(){
   setRelayHandlers('resumeConsumer')
   setRelayHandlers('streamingStart')
   setRelayHandlers('streamingStop')
+
+  //  Speech-to-text (bm workspace doc: `stt-translation`). Start/stop are plain relays like
+  //  streaming, but the results go the other way: instead of being forwarded to the requesting
+  //  peer, they are injected into the room's data channel as messages from the speaker, so every
+  //  participant receives them through the same path as any other SPEECH_*/chat message.
+  setRelayHandlers('sttStart')
+  setRelayHandlers('sttStop')
+  handlersForWorker.set('sttResult', (base) => {
+    ingestSttResult(base as MSSttResultMessage)
+  })
 }
 

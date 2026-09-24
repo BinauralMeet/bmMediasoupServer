@@ -5,6 +5,14 @@ import {MessageType} from './DataMessageType'
 import {ObjectArrayMessageTypes, StringArrayMessageTypes} from './DataMessageType'
 import websocket from 'ws'
 
+//  Message types that must never be merged with an already-queued message of the same type
+//  (see pushOrUpdateMessage below).
+const LogMessageTypes = new Set<string>([
+  MessageType.CHAT_MESSAGE,
+  MessageType.SPEECH_TEXT,
+  MessageType.SPEECH_TRANSLATION,
+])
+
 export interface Content{
   content: ISharedContent,
   timeUpdate: number,
@@ -97,12 +105,13 @@ export class ParticipantStore {
   //  (t, p) slot and clobber each other before either is sent. Mirrors the client-side fix in
   //  DataConnection.ts's sendMessage(). Every other message type omits this and is unaffected.
   pushOrUpdateMessage(msg: Message, mergeKeyExtra?: string){
-    //  CHAT_MESSAGE is a log of discrete events, not a "latest value wins" state field --
-    //  unlike every other type here, two chat messages queued to the same peer before a
-    //  flush must NOT collapse into one (verified live: without this, a rapid burst of
-    //  chat messages to the same recipient silently dropped all but the last). Mirrors the
-    //  identical fix on the client side (DataConnection.ts's sendMessage()).
-    if (msg.t === MessageType.CHAT_MESSAGE){
+    //  These are logs of discrete events, not "latest value wins" state fields -- unlike every
+    //  other type here, two of them queued to the same peer before a flush must NOT collapse
+    //  into one (verified live for chat: without this, a rapid burst of chat messages to the
+    //  same recipient silently dropped all but the last; two utterances finishing between two
+    //  flushes would lose one the same way). Mirrors the 'instant' merge strategy the client
+    //  gives these types (MessageTypeRegistry.ts / DataConnection.ts's sendMessage()).
+    if (LogMessageTypes.has(msg.t)){
       this.messagesTo.push(msg)
       return
     }
