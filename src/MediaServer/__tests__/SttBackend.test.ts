@@ -1,6 +1,7 @@
 import {describe, it, expect, vi, afterEach} from 'vitest'
+import http from 'http'
 import {wavFromPcm16, breakerShouldSkip, breakerOnFailure, breakerOnSuccess, newBreakerState,
-  SttBackendSelector, SttBackend, SttResult} from '../SttBackend'
+  SttBackendSelector, SttBackend, SttResult, HttpSttBackend} from '../SttBackend'
 
 //  A scriptable stand-in for an HTTP backend: each call takes the next entry of `script`
 //  ('ok' | 'fail' | 'busy') so a test can describe a sequence of GPU availability.
@@ -75,6 +76,73 @@ describe('breaker', () => {
     s = breakerOnSuccess(s)
     s = breakerOnFailure(s, 0, cfg)
     expect(breakerShouldSkip(s, 0)).toBe(false)
+  })
+})
+
+describe('HttpSttBackend', () => {
+  //  A recognizer sidecar that records what it was asked, so the request itself can be asserted.
+  //  Its contract is the real one (bm/stt-sidecars): an unknown `lang` is an error, not a hint.
+  function serve(handler: (url: URL, body: Buffer) => [number, any]){
+    const seen: {url: URL, body: Buffer}[] = []
+    const server = http.createServer((req, res) => {
+      const chunks: Buffer[] = []
+      req.on('data', c => chunks.push(c))
+      req.on('end', () => {
+        const url = new URL(req.url!, 'http://x')
+        const body = Buffer.concat(chunks)
+        seen.push({url, body})
+        const [status, payload] = handler(url, body)
+        res.writeHead(status, {'content-type': 'application/json'})
+        res.end(JSON.stringify(payload))
+      })
+    })
+
+    return new Promise<{port: number, seen: typeof seen, close: () => void}>((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        const {port} = server.address() as any
+        resolve({port, seen, close: () => server.close()})
+      })
+    })
+  }
+
+  const ok = (url: URL) => {
+    const lang = url.searchParams.get('lang')
+    if (lang && !['ja', 'en'].includes(lang)){ return [500, {text: '', lang}] as [number, any] }
+
+    return [200, {text: ' recognized ', lang: lang || 'ja'}] as [number, any]
+  }
+
+  it("sends no lang parameter for 'auto', which is BM's word for a hint it does not have", async () => {
+    const sidecar = await serve(ok)
+    try{
+      const backend = new HttpSttBackend({kind: 'x', endpoint: `http://127.0.0.1:${sidecar.port}/asr`})
+      const result = await backend.transcribe(Buffer.alloc(320 * 2), 'auto')
+      expect(sidecar.seen[0].url.searchParams.has('lang')).toBe(false)
+      //  ...and the language the recognizer detected is what comes back, since nothing else knows it.
+      expect(result).toEqual({text: 'recognized', lang: 'ja'})
+    }finally{ sidecar.close() }
+  })
+
+  it('passes a real language code through as a hint', async () => {
+    const sidecar = await serve(ok)
+    try{
+      const backend = new HttpSttBackend({kind: 'x', endpoint: `http://127.0.0.1:${sidecar.port}/asr`})
+      await backend.transcribe(Buffer.alloc(320 * 2), 'en')
+      expect(sidecar.seen[0].url.searchParams.get('lang')).toBe('en')
+    }finally{ sidecar.close() }
+  })
+
+  it('sends the audio as a well-formed 16kHz mono WAV', async () => {
+    const sidecar = await serve(ok)
+    try{
+      const backend = new HttpSttBackend({kind: 'x', endpoint: `http://127.0.0.1:${sidecar.port}/asr`})
+      await backend.transcribe(Buffer.alloc(16000 * 2), 'ja')
+      const body = sidecar.seen[0].body
+      expect(body.toString('ascii', 0, 4)).toBe('RIFF')
+      expect(body.readUInt32LE(24)).toBe(16000)
+      expect(body.readUInt16LE(22)).toBe(1)
+      expect(body.length).toBe(44 + 16000 * 2)
+    }finally{ sidecar.close() }
   })
 })
 

@@ -136,15 +136,23 @@ export class HttpSttBackend implements SttBackend{
   }
 
   async transcribe(pcm: Buffer, lang: string): Promise<SttResult>{
+    //  'auto' is BM's own word for "no hint" -- it is not a language code, and a recognizer
+    //  handed it as one errors out. The contract is an absent/empty `lang` (see the sidecar's
+    //  own docstring), so send nothing at all in that case.
+    const hint = lang && lang !== 'auto' ? lang : ''
     const res = await axios.post(this.cfg.endpoint, wavFromPcm16(pcm), {
-      params: {lang},
+      params: hint ? {lang: hint} : {},
       timeout: this.cfg.timeoutMs || 3000,
       headers: {...this.headers, 'Content-Type': 'audio/wav'},
       maxBodyLength: Infinity,
     })
     const text = typeof res.data?.text === 'string' ? res.data.text : ''
+    //  With no hint, what the recognizer detected is the only source of the language, and
+    //  translation needs it: falling back to 'auto' here would make every utterance untranslatable
+    //  (collectTargetLangs() treats an unknown source language as "do not translate").
+    const detected = typeof res.data?.lang === 'string' ? res.data.lang.trim() : ''
 
-    return {text: text.trim(), lang: res.data?.lang || lang}
+    return {text: text.trim(), lang: detected || hint}
   }
 }
 
