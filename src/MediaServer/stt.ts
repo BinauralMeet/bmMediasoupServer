@@ -243,8 +243,14 @@ class SttSession{
     //  only just fast enough still answers all of them.
     this.work = this.work.then(async () => {
       this.busy = true
+      const queuedFor = Date.now() - endedAt
+      const startedAt = Date.now()
       try{
         const res = await getSelector().transcribe(pcm, this.hint())
+        //  The two halves of "why was the subtitle late": time spent waiting behind this
+        //  speaker's own earlier utterances, and time the recognizer took.
+        sttDebug(`stt: ${segment.sid} ${durationMs}ms audio, queued ${queuedFor}ms, ` +
+          `recognized in ${Date.now() - startedAt}ms`)
         if (!res || !res.text || (this.stopped && !afterStop)){ return }
         //  Finals are the evidence: interim text is provisional and often shorter.
         this.tally.add(res.lang, res.text)

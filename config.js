@@ -125,6 +125,9 @@ module.exports = {
   //  (`POST <gpuStatus>/activate/<gpuMode>`) -- which stops whatever was running there, so only
   //  set it for a GPU whose other users accept that.
   //
+  //  Only ONE entry per GPU may carry `gpuMode`: two of them would take turns switching the
+  //  card into their own mode, every utterance, forever.
+  //
   //  `upload`/`langParam`/`langAuto` cover the differences between services: bm/stt-sidecars
   //  takes a raw WAV body and `lang` (absent = detect it), SenseVoice takes multipart `file` and
   //  `language` (for which 'auto' is a value). `timeoutMs` has to cover the longest utterance the
