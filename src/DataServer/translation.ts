@@ -32,14 +32,31 @@ export function wantedLangs(room: RoomStore): (string|undefined)[]{
   })
 }
 
-async function callBackend(text: string, src: string, dsts: string[]): Promise<{[lang: string]: string}>{
-  const endpoint = config.translation?.endpoint
+interface TranslationEndpoint{
+  endpoint: string
+  apiKeyEnv?: string
+  timeoutMs?: number
+}
+
+//  One entry, or several tried in order. Several is how a deployment gets both quality and
+//  coverage: a dedicated ja<->en model translates that pair better than any multilingual one,
+//  while the multilingual one behind it answers the pairs the first has never heard of. Each is
+//  asked only for what is still missing, and an endpoint that is down costs the languages only
+//  it could serve.
+function endpoints(): TranslationEndpoint[]{
+  const t = config.translation
+  if (!t){ return [] }
+  if (Array.isArray(t.endpoints)){ return t.endpoints.filter((e: TranslationEndpoint) => e?.endpoint) }
+
+  return t.endpoint ? [{endpoint: t.endpoint, apiKeyEnv: t.apiKeyEnv, timeoutMs: t.timeoutMs}] : []
+}
+
+async function callOne(target: TranslationEndpoint, text: string, src: string, dsts: string[]){
   const headers: {[key: string]: string} = {}
-  const keyEnv = config.translation?.apiKeyEnv
-  const key = keyEnv ? process.env[keyEnv] : undefined
+  const key = target.apiKeyEnv ? process.env[target.apiKeyEnv] : undefined
   if (key){ headers.Authorization = `Bearer ${key}` }
-  const res = await axios.post(endpoint, {texts: [text], src, dsts},
-    {timeout: config.translation?.timeoutMs || 5000, headers})
+  const res = await axios.post(target.endpoint, {texts: [text], src, dsts},
+    {timeout: target.timeoutMs || config.translation?.timeoutMs || 5000, headers})
 
   //  Accept both {en: "..."} and {en: ["..."]} so a backend that answers per-input-text (the
   //  natural shape for the batch API above) does not need an adapter of its own.
@@ -53,11 +70,28 @@ async function callBackend(text: string, src: string, dsts: string[]): Promise<{
   return out
 }
 
+async function callBackend(text: string, src: string, dsts: string[]): Promise<{[lang: string]: string}>{
+  const out: {[lang: string]: string} = {}
+  let missing = dsts
+  for (const target of endpoints()){
+    try{
+      const got = await callOne(target, text, src, missing)
+      Object.assign(out, got)
+      missing = missing.filter(lang => out[lang] === undefined)
+    }catch(e: any){
+      consoleDebug(`translation: ${target.endpoint} failed: ${e?.message}`)
+    }
+    if (!missing.length){ break }
+  }
+
+  return out
+}
+
 //  Fire-and-forget: the caller has already broadcast the original text, and a translation that
 //  fails or is skipped simply never arrives -- subtitles stay in the original language.
 export function translateUtterance(room: RoomStore, sid: string, pid: string, text: string,
   srcLang: string, broadcast: (payload: SpeechTranslation) => void){
-  if (!config.translation?.endpoint){ return }
+  if (!endpoints().length){ return }
   const src = normalizeLang(srcLang)
   if (!src){ return }
   const targets = collectTargetLangs(wantedLangs(room), src)

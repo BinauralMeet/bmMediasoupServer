@@ -160,11 +160,20 @@ module.exports = {
   },
 
   //  Translation runs on the main server (it is where the room's participants and their desired
-  //  languages are known). `backend` empty = original-language subtitles only.
-  //  `bm/stt-sidecars/translate_server.py`, ja<->en only (`stt-sidecars/README.md#models`).
+  //  languages are known). No endpoint at all = original-language subtitles only.
+  //
+  //  `endpoints` is tried in order and each is asked only for the languages still missing, so a
+  //  dedicated pair model can sit in front of a multilingual one: FuguMT translates ja<->en
+  //  better than any many-to-many model, while the multilingual one behind it answers the pairs
+  //  FuguMT has never heard of. An endpoint that is down costs only the languages nobody else
+  //  covers. A single `endpoint: '...'` still works and means a chain of one.
+  //    endpoints: [
+  //      {endpoint: 'http://.../translate'},                       //  bm/stt-sidecars, ja<->en
+  //      {endpoint: 'https://.../GPUWHISPER/translate',            //  M2M-100, everything else
+  //        apiKeyEnv: 'LM_HASELAB_API_KEY', timeoutMs: 8000},
+  //    ],
   translation: {
-    endpoint: 'http://localhost:8191/translate',  //  POST {texts, src, dsts} -> {lang: text}
-    apiKeyEnv: '',
+    endpoints: [],
     timeoutMs: 5000,
     maxConcurrent: 4,
     cacheSize: 2000,

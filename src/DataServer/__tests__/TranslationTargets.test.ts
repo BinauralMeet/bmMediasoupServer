@@ -58,3 +58,18 @@ describe('TranslationCache', () => {
     expect(cache.get('ja', 'en', 'b')).toBeUndefined()
   })
 })
+
+//  The endpoint chain lives in translation.ts (it needs config and axios), so it is exercised by
+//  the manual script there -- see `stt-translation#ops`. What is worth pinning down here is the
+//  rule the chain relies on: a language nobody could translate is simply absent, never empty.
+describe('partial coverage', () => {
+  it('leaves an unsupported target out rather than answering with nothing', () => {
+    const wanted = collectTargetLangs(['en', 'zh'], 'ja')
+    expect(wanted).toEqual(['en', 'zh'])
+    //  A backend that only knows en answers {en: ...}; the caller keeps zh missing and asks the
+    //  next one. Neither ever sees an empty string for a language it cannot do.
+    const fromFirst: {[lang: string]: string} = {en: 'Hello.'}
+    const stillMissing = wanted.filter(lang => fromFirst[lang] === undefined)
+    expect(stillMissing).toEqual(['zh'])
+  })
+})
