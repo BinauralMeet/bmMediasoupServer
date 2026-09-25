@@ -120,9 +120,13 @@ module.exports = {
   //  clients asking for STT get a clear refusal instead of silence.
   //
   //  A GPU-backed entry may name `gpuStatus`, whose `<gpuStatus>/lock/status` is *read* (never
-  //  acquired) so a GPU somebody else is holding is skipped rather than fought over.
+  //  acquired) so a GPU somebody else is holding is skipped rather than fought over. With
+  //  `gpuMode` set, an *unlocked* GPU running something else is asked to switch into that mode
+  //  (`POST <gpuStatus>/activate/<gpuMode>`) -- which stops whatever was running there, so only
+  //  set it for a GPU whose other users accept that.
   //    {kind:'sensevoice', endpoint:'https://.../SENSEVOICE/asr',
-  //     gpuStatus:'https://.../SWITCH5070TI', apiKeyEnv:'LM_HASELAB_API_KEY', timeoutMs:3000},
+  //     gpuStatus:'https://.../SWITCH5070TI', gpuMode:'sensevoice',
+  //     apiKeyEnv:'LM_HASELAB_API_KEY', timeoutMs:3000},
   //    {kind:'cpuWhisper', endpoint:'http://localhost:8190/asr', timeoutMs:8000},
   //
   //  Host-side setup for both entries below: `stt-translation#hostwork` / `bm/stt-sidecars`.

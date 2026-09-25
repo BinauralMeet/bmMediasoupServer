@@ -146,6 +146,92 @@ describe('HttpSttBackend', () => {
   })
 })
 
+describe('HttpSttBackend GPU handling', () => {
+  //  Stands in for the GPU's switch/lock API: /lock/status, /status and /activate/<mode>.
+  function gpu(opts: {locked: boolean, modes: string[]}){
+    const calls: string[] = []
+    const server = http.createServer((req, res) => {
+      const url = new URL(req.url!, 'http://x')
+      calls.push(`${req.method} ${url.pathname}`)
+      let body: any = {}
+      if (url.pathname === '/lock/status'){ body = {locked: opts.locked} }
+      if (url.pathname === '/status'){ body = {active_modes: opts.modes} }
+      if (url.pathname.startsWith('/activate/')){
+        opts.modes = [url.pathname.slice('/activate/'.length)]
+        body = {status: 'switching'}
+      }
+      res.writeHead(200, {'content-type': 'application/json'})
+      res.end(JSON.stringify(body))
+    })
+
+    return new Promise<{port: number, calls: string[], setModes: (m: string[]) => void,
+      close: () => void}>((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        resolve({port: (server.address() as any).port, calls,
+          setModes: (m: string[]) => { opts.modes = m },
+          close: () => server.close()})
+      })
+    })
+  }
+
+  it('stays out of the way entirely while someone holds the lock', async () => {
+    const api = await gpu({locked: true, modes: ['something-else']})
+    try{
+      const backend = new HttpSttBackend({kind: 'gpu', endpoint: 'http://127.0.0.1:1/asr',
+        gpuStatus: `http://127.0.0.1:${api.port}`, gpuMode: 'conversation'})
+      expect(await backend.usable()).toBe(false)
+      //  No mode was inspected and nothing was switched: a held lock ends the conversation.
+      expect(api.calls).toEqual(['GET /lock/status'])
+    }finally{ api.close() }
+  })
+
+  it('uses the GPU when it is already in the right mode', async () => {
+    const api = await gpu({locked: false, modes: ['conversation']})
+    try{
+      const backend = new HttpSttBackend({kind: 'gpu', endpoint: 'http://127.0.0.1:1/asr',
+        gpuStatus: `http://127.0.0.1:${api.port}`, gpuMode: 'conversation'})
+      expect(await backend.usable()).toBe(true)
+      expect(api.calls.some(c => c.startsWith('POST /activate'))).toBe(false)
+    }finally{ api.close() }
+  })
+
+  it('asks an unlocked GPU to switch, and uses it once it has', async () => {
+    const api = await gpu({locked: false, modes: ['hidream']})
+    try{
+      const backend = new HttpSttBackend({kind: 'gpu', endpoint: 'http://127.0.0.1:1/asr',
+        gpuStatus: `http://127.0.0.1:${api.port}`, gpuMode: 'conversation'})
+      //  The switch takes longer than an utterance can wait, so this one goes elsewhere...
+      expect(await backend.usable()).toBe(false)
+      expect(api.calls).toContain('POST /activate/conversation')
+      //  ...and the next one, after the lock-status cache expires, finds the mode running.
+      vi.useFakeTimers()
+      vi.setSystemTime(Date.now() + 60000)
+      expect(await backend.usable()).toBe(true)
+    }finally{ api.close() }
+  })
+
+  it('does not keep asking a GPU that stays in another mode', async () => {
+    const api = await gpu({locked: false, modes: ['hidream']})
+    try{
+      const backend = new HttpSttBackend({kind: 'gpu', endpoint: 'http://127.0.0.1:1/asr',
+        gpuStatus: `http://127.0.0.1:${api.port}`, gpuMode: 'conversation'})
+      await backend.usable()
+      api.calls.length = 0
+      //  Someone switched it back; we do not fight over it once every ten seconds.
+      api.setModes(['hidream'])
+      vi.useFakeTimers()
+      vi.setSystemTime(Date.now() + 30000)
+      expect(await backend.usable()).toBe(false)
+      expect(api.calls.some(c => c.startsWith('POST /activate'))).toBe(false)
+    }finally{ api.close() }
+  })
+
+  it('ignores the GPU API entirely when no gpuStatus is configured', async () => {
+    const backend = new HttpSttBackend({kind: 'cpu', endpoint: 'http://127.0.0.1:1/asr'})
+    expect(await backend.usable()).toBe(true)
+  })
+})
+
 describe('SttBackendSelector', () => {
   it('uses the first backend when it works', async () => {
     const gpu = backend('gpu', 'ok')

@@ -18,6 +18,7 @@ export interface SttBackendConfig{
   kind: string                //  free-form label used in logs ('sensevoice', 'cpuWhisper', ...)
   endpoint: string            //  POST target for transcription
   gpuStatus?: string          //  base URL of the GPU's switch/lock API, when it shares a GPU
+  gpuMode?: string            //  the mode that runs this recognizer; switched into when idle
   timeoutMs?: number
   headers?: {[key: string]: string}
   apiKeyEnv?: string          //  env var holding a bearer token (keys never live in config.js)
@@ -93,12 +94,16 @@ export interface SttBackend{
 }
 
 const LOCK_STATUS_CACHE_MS = 10 * 1000
+//  Switching modes restarts a service and reloads a model, so asking again a few seconds later
+//  achieves nothing but noise. One attempt, then leave the GPU alone for a while.
+const ACTIVATE_RETRY_MS = 3 * 60 * 1000
 
 export class HttpSttBackend implements SttBackend{
   readonly name: string
   private cfg: SttBackendConfig
   private lockCheckedAt = 0
   private lockedCached = false
+  private activatedAt = 0
 
   constructor(cfg: SttBackendConfig){
     this.cfg = cfg
@@ -113,9 +118,10 @@ export class HttpSttBackend implements SttBackend{
     return headers
   }
 
-  //  Reads the GPU's lock state; never acquires it. If the status endpoint itself is unreachable
-  //  we assume usable and let the transcribe call be the real test -- a monitoring endpoint being
-  //  down is not a reason to refuse a GPU that may well be idle.
+  //  Reads the GPU's lock state; never acquires it. A lock means somebody is working there, so
+  //  we stay out of the way entirely. If the status endpoint itself is unreachable we assume
+  //  usable and let the transcribe call be the real test -- a monitoring endpoint being down is
+  //  not a reason to refuse a GPU that may well be idle.
   async usable(){
     if (!this.cfg.gpuStatus){ return true }
     const now = Date.now()
@@ -127,12 +133,44 @@ export class HttpSttBackend implements SttBackend{
       this.lockedCached = !!res.data?.locked
       if (this.lockedCached){
         sttDebug(`stt: ${this.name} skipped, GPU locked by someone else`)
+
+        return false
       }
     }catch(e){
       this.lockedCached = false
     }
 
-    return !this.lockedCached
+    return this.cfg.gpuMode ? await this.modeReady(now) : true
+  }
+
+  //  With nobody holding the lock, the GPU is fair game: if it is running something else, ask it
+  //  to switch to the mode this recognizer lives in. The switch restarts a service and loads a
+  //  model, which takes far longer than an utterance can wait, so this one goes to the next
+  //  backend and the switch pays off for the ones after it.
+  private async modeReady(now: number){
+    let active: string[] = []
+    try{
+      const res = await axios.get(`${this.cfg.gpuStatus}/status`, {timeout: 2000, headers: this.headers})
+      active = Array.isArray(res.data?.active_modes) ? res.data.active_modes : []
+    }catch(e){
+      //  Same reasoning as the lock check: a status endpoint that will not answer is not
+      //  evidence about the GPU, so let transcribe() find out.
+      return true
+    }
+    if (active.indexOf(this.cfg.gpuMode!) >= 0){ return true }
+    if (now - this.activatedAt < ACTIVATE_RETRY_MS){ return false }
+    this.activatedAt = now
+    try{
+      await axios.post(`${this.cfg.gpuStatus}/activate/${this.cfg.gpuMode}`, undefined,
+        {timeout: 5000, headers: this.headers})
+      //  Worth a plain log, not a debug one: this stops whatever else was using that GPU.
+      sttLog(`stt: asked the GPU to switch to '${this.cfg.gpuMode}' ` +
+        `(was ${active.length ? active.join(',') : 'idle'}) for backend '${this.name}'`)
+    }catch(e: any){
+      sttDebug(`stt: could not switch the GPU to '${this.cfg.gpuMode}': ${e?.message}`)
+    }
+
+    return false
   }
 
   async transcribe(pcm: Buffer, lang: string): Promise<SttResult>{

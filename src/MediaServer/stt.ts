@@ -147,7 +147,7 @@ class SttSession{
       }else if (ev.type === 'interim'){
         this.requestInterim()
       }else if (ev.type === 'end'){
-        this.closeSegment(this.vad.isUtterance(ev))
+        this.closeSegment(this.vad.isUtterance(ev), false, ev.durationMs)
       }
     }
   }
@@ -170,9 +170,11 @@ class SttSession{
 
   //  `afterStop` is set by the final flush in stop(): the session is already stopped, but this one
   //  last transcription is exactly what stopping must not throw away.
-  private closeSegment(isUtterance: boolean, afterStop = false){
+  private closeSegment(isUtterance: boolean, afterStop = false, durationMs = 0){
     const segment = this.segment
     if (!segment){ return }
+    //  Stamped now, not when the transcription comes back: this is when the speaking stopped.
+    const endedAt = Date.now()
     segment.closed = true
     this.segment = undefined
     const pcm = Buffer.concat(this.segmentChunks)
@@ -185,12 +187,15 @@ class SttSession{
     if (!getSelector().configured){ return }
     getSelector().transcribe(pcm, this.lang).then((res) => {
       if (!res || !res.text || (this.stopped && !afterStop)){ return }
-      this.emit(segment.sid, res.text, res.lang, true)
+      this.emit(segment.sid, res.text, res.lang, true, durationMs, endedAt)
     }).catch(e => { sttDebug(`stt: final transcription failed: ${e?.message}`) })
   }
 
-  private emit(sid: string, text: string, lang: string, final: boolean){
-    sendResult({type: 'sttResult', peer: this.peer, room: this.room, sid, text, lang, final})
+  //  durationMs travels with the final result so clients can tell continuous speech from a
+  //  pause: recognition lags by seconds, so arrival times say nothing about the speech itself.
+  private emit(sid: string, text: string, lang: string, final: boolean, durationMs = 0, ts = 0){
+    sendResult({type: 'sttResult', peer: this.peer, room: this.room, sid, text, lang, final,
+      durationMs, ts})
   }
 
   stop(){
@@ -198,7 +203,9 @@ class SttSession{
     this.stopped = true
     //  Transcribe whatever was still open so the tail of a sentence is not lost with the session.
     for (const ev of this.vad.flush()){
-      if (ev.type === 'end' && this.vad.isUtterance(ev)){ this.closeSegment(true, true) }
+      if (ev.type === 'end' && this.vad.isUtterance(ev)){
+        this.closeSegment(true, true, ev.durationMs)
+      }
     }
     this.process?.kill()
     this.consumer?.close()

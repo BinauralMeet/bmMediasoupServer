@@ -41,7 +41,10 @@ export function ingestSttResult(result: MSSttResultMessage){
     return
   }
 
-  const payload: SpeechText = {sid: result.sid, text, lang: result.lang, ts: Date.now()}
+  //  The worker's timestamp for when the speech ended, not the moment recognition finished:
+  //  clients use it to tell continuous speech from a pause.
+  const payload: SpeechText = {sid: result.sid, text, lang: result.lang,
+    ts: result.ts || Date.now(), durationMs: result.durationMs}
   broadcast(room, {t: MessageType.SPEECH_TEXT, p: result.peer, v: JSON.stringify(payload)})
 
   //  Sent separately and later, so a slow or dead translation backend never delays the
