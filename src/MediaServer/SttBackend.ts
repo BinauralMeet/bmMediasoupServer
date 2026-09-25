@@ -2,16 +2,23 @@
 //  See the workspace doc `stt-translation#stt-backend` / `#fallback` for the design and for why
 //  this never takes a GPU lock.
 //
-//  Every backend speaks the same tiny HTTP contract, so adding one is a config entry, not code:
-//    POST <endpoint>?lang=<hint>   body: a 16kHz mono 16-bit WAV      -> {"text": "...", "lang": "ja"}
+//  Every backend takes a 16kHz mono WAV and answers with JSON holding a `text` field; the
+//  details around that differ per service and are configuration, not code:
+//    POST <endpoint>?<langParam>=<hint>   raw WAV body, or multipart `file` with `upload`
+//    -> {"text": "...", "lang"|"language": "ja"}
+//  bm/stt-sidecars takes a raw body and `lang`, and treats an absent value as "detect it";
+//  SenseVoice takes multipart and `language`, for which "auto" is a valid value.
 //  A backend that sits on a shared GPU additionally names a `gpuStatus` base URL whose
 //  `GET <gpuStatus>/lock/status` returns `{"locked": bool}`; we only ever read it.
 import axios from 'axios'
+import {guessLang} from './SttLanguage'
 
 //  Local, like media.ts's own helpers: MainServer/utils.ts opens a log file at import time,
 //  which has no business happening in the media worker process.
-const STT_DEBUG = false
-const sttDebug = STT_DEBUG ? console.debug : (..._: any[]) => {}
+//  Set BM_STT_DEBUG=1 to trace why no subtitle appeared: which segments the VAD opened,
+//  what the audio actually measured, and which backend answered.
+const STT_DEBUG = !!process.env.BM_STT_DEBUG
+const sttDebug = STT_DEBUG ? console.log : (..._: any[]) => {}
 const sttLog = console.log
 
 export interface SttBackendConfig{
@@ -19,6 +26,9 @@ export interface SttBackendConfig{
   endpoint: string            //  POST target for transcription
   gpuStatus?: string          //  base URL of the GPU's switch/lock API, when it shares a GPU
   gpuMode?: string            //  the mode that runs this recognizer; switched into when idle
+  upload?: 'raw' | 'multipart'//  how the audio is sent (default: raw body)
+  langParam?: string          //  query parameter carrying the language hint (default: 'lang')
+  langAuto?: string           //  what to send for "detect it"; omitted from the request if unset
   timeoutMs?: number
   headers?: {[key: string]: string}
   apiKeyEnv?: string          //  env var holding a bearer token (keys never live in config.js)
@@ -54,6 +64,13 @@ export function wavFromPcm16(pcm: Buffer, sampleRate = SAMPLE_RATE, channels = 1
   header.writeUInt32LE(pcm.length, 40)
 
   return Buffer.concat([header, pcm])
+}
+
+//  SenseVoice marks events and emotions inline with emoji (\ud83c\udfbc for music, faces for
+//  emotion). They are not words anybody said, they make no sense in a subtitle, and a translator
+//  handed them produces nonsense, so they come out before anything else sees the text.
+export function stripEventTags(text: string){
+  return text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, '').trim()
 }
 
 export interface BreakerConfig{
@@ -97,6 +114,9 @@ const LOCK_STATUS_CACHE_MS = 10 * 1000
 //  Switching modes restarts a service and reloads a model, so asking again a few seconds later
 //  achieves nothing but noise. One attempt, then leave the GPU alone for a while.
 const ACTIVATE_RETRY_MS = 3 * 60 * 1000
+//  These calls cross a reverse proxy to another machine; 2s was tight enough to time out and
+//  make the GPU look unreadable when it was merely far away.
+const GPU_API_TIMEOUT_MS = 6000
 
 export class HttpSttBackend implements SttBackend{
   readonly name: string
@@ -129,7 +149,7 @@ export class HttpSttBackend implements SttBackend{
     this.lockCheckedAt = now
     try{
       const res = await axios.get(`${this.cfg.gpuStatus}/lock/status`,
-        {timeout: 2000, headers: this.headers})
+        {timeout: GPU_API_TIMEOUT_MS, headers: this.headers})
       this.lockedCached = !!res.data?.locked
       if (this.lockedCached){
         sttDebug(`stt: ${this.name} skipped, GPU locked by someone else`)
@@ -150,12 +170,16 @@ export class HttpSttBackend implements SttBackend{
   private async modeReady(now: number){
     let active: string[] = []
     try{
-      const res = await axios.get(`${this.cfg.gpuStatus}/status`, {timeout: 2000, headers: this.headers})
+      const res = await axios.get(`${this.cfg.gpuStatus}/status`,
+        {timeout: GPU_API_TIMEOUT_MS, headers: this.headers})
       active = Array.isArray(res.data?.active_modes) ? res.data.active_modes : []
     }catch(e){
-      //  Same reasoning as the lock check: a status endpoint that will not answer is not
-      //  evidence about the GPU, so let transcribe() find out.
-      return true
+      //  Unlike the lock check, an unanswered status is a reason to skip: this backend only
+      //  exists while its mode runs, and finding out by posting audio costs a whole timeout
+      //  out of an utterance's budget, every utterance.
+      sttDebug(`stt: ${this.name} skipped, cannot read the GPU's mode`)
+
+      return false
     }
     if (active.indexOf(this.cfg.gpuMode!) >= 0){ return true }
     if (now - this.activatedAt < ACTIVATE_RETRY_MS){ return false }
@@ -174,23 +198,38 @@ export class HttpSttBackend implements SttBackend{
   }
 
   async transcribe(pcm: Buffer, lang: string): Promise<SttResult>{
-    //  'auto' is BM's own word for "no hint" -- it is not a language code, and a recognizer
-    //  handed it as one errors out. The contract is an absent/empty `lang` (see the sidecar's
-    //  own docstring), so send nothing at all in that case.
+    //  'auto' is BM's own word for "no hint". Some recognizers accept a word for that and some
+    //  error out on anything that is not a language code, so it is per-backend whether to send
+    //  something or nothing at all.
     const hint = lang && lang !== 'auto' ? lang : ''
-    const res = await axios.post(this.cfg.endpoint, wavFromPcm16(pcm), {
-      params: hint ? {lang: hint} : {},
+    const param = this.cfg.langParam || 'lang'
+    const value = hint || this.cfg.langAuto || ''
+    const wav = wavFromPcm16(pcm)
+    let body: any = wav
+    const headers: {[key: string]: string} = {...this.headers}
+    if (this.cfg.upload === 'multipart'){
+      const form = new FormData()
+      form.append('file', new Blob([new Uint8Array(wav)], {type: 'audio/wav'}), 'audio.wav')
+      body = form   //  axios fills in the boundary itself
+    }else{
+      headers['Content-Type'] = 'audio/wav'
+    }
+    const res = await axios.post(this.cfg.endpoint, body, {
+      params: value ? {[param]: value} : {},
       timeout: this.cfg.timeoutMs || 3000,
-      headers: {...this.headers, 'Content-Type': 'audio/wav'},
+      headers,
       maxBodyLength: Infinity,
     })
-    const text = typeof res.data?.text === 'string' ? res.data.text : ''
+    const text = stripEventTags(typeof res.data?.text === 'string' ? res.data.text : '')
     //  With no hint, what the recognizer detected is the only source of the language, and
     //  translation needs it: falling back to 'auto' here would make every utterance untranslatable
-    //  (collectTargetLangs() treats an unknown source language as "do not translate").
-    const detected = typeof res.data?.lang === 'string' ? res.data.lang.trim() : ''
+    //  (collectTargetLangs() treats an unknown source language as "do not translate"). Some
+    //  services echo the request's "auto" back instead of naming what they heard -- that is the
+    //  same as not knowing.
+    const reported = res.data?.lang ?? res.data?.language
+    const detected = typeof reported === 'string' && reported.trim() !== 'auto' ? reported.trim() : ''
 
-    return {text: text.trim(), lang: detected || hint}
+    return {text, lang: detected || hint || guessLang(text)}
   }
 }
 

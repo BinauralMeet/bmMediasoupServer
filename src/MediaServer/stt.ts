@@ -12,12 +12,15 @@ import {SttFFmpeg} from './ffmpeg'
 import {RtpInfo} from './streaming'
 import {VadLogic, frameRms} from './SttVadLogic'
 import {SttBackendSelector, SAMPLE_RATE} from './SttBackend'
+import {LanguageTally} from './SttLanguage'
 import {MSSttStartMessage, MSSttStopMessage, MSSttResultMessage} from './MediaMessages'
 import {producers} from '../media'
 
 const config = require('../../config')
 
-const STT_DEBUG = false
+//  Set BM_STT_DEBUG=1 to trace why no subtitle appeared: which segments the VAD opened,
+//  what the audio actually measured, and which backend answered.
+const STT_DEBUG = !!process.env.BM_STT_DEBUG
 const sttDebug = STT_DEBUG ? console.log : (..._: any[]) => {}
 const sttLog = console.log
 
@@ -46,6 +49,7 @@ const sessions = new Map<string, SttSession>()    //  key: peer id (one mic per 
 
 function maxSessions(){ return config.stt?.maxSessions || 8 }
 function interimMs(){ return config.stt?.interimIntervalMs || 1500 }
+function hangoverMs(){ return config.stt?.hangoverMs || 800 }
 
 interface Segment{
   sid: string
@@ -61,7 +65,7 @@ class SttSession{
   private consumer?: mediasoup.types.Consumer
   private process?: SttFFmpeg
   private port = -1
-  private vad = new VadLogic({frameMs: FRAME_MS, interimMs: interimMs()})
+  private vad = new VadLogic({frameMs: FRAME_MS, interimMs: interimMs(), hangoverMs: hangoverMs()})
   //  bytes of an incomplete frame left over from the last chunk (ArrayBufferLike: subarray() of a
   //  concat result is not necessarily backed by a plain ArrayBuffer)
   private residual: Buffer<ArrayBufferLike> = Buffer.alloc(0)
@@ -69,8 +73,22 @@ class SttSession{
   private segmentChunks: Buffer[] = []
   private segment?: Segment
   private seq = 0
-  private interimBusy = false
+  //  One recognition at a time per speaker, finals queued behind each other. Without this the
+  //  segments of continuous speech all go out at once and, on a backend that is barely faster
+  //  than realtime, every one of them times out -- the speaker gets no subtitle at all precisely
+  //  when they are saying the most.
+  private work: Promise<void> = Promise.resolve()
+  private busy = false
+  //  Interim re-decodes are pure overhead on a backend that cannot outrun the speech: they are
+  //  discarded anyway (the final overtakes them), but they eat the capacity the finals need.
+  private interimWorthTrying = true
+  //  Only used when the speaker asked for 'auto': what language this session has settled on.
+  private tally = new LanguageTally()
   private stopped = false
+  private statFrames = 0
+  private statPeak = 0
+  private statSum = 0
+  private statLoggedAt = 0
 
   constructor(msg: MSSttStartMessage){
     this.peer = msg.peer
@@ -129,6 +147,7 @@ class SttSession{
       ? new Int16Array(frame.buffer, frame.byteOffset, FRAME_SAMPLES)
       : new Int16Array(Uint8Array.from(frame).buffer)
     const rms = frameRms(samples)
+    this.trace(rms)
 
     if (this.segment && !this.segment.closed){
       this.segmentChunks.push(Buffer.from(frame))
@@ -152,20 +171,55 @@ class SttSession{
     }
   }
 
+  //  Nothing here runs unless BM_STT_DEBUG is set. "Audio arrives but no subtitle" has two very
+  //  different causes -- silence never reaching the VAD's threshold, or recognition failing --
+  //  and telling them apart from the outside is otherwise guesswork.
+  private trace(rms: number){
+    if (!STT_DEBUG){ return }
+    this.statFrames += 1
+    this.statSum += rms
+    this.statPeak = Math.max(this.statPeak, rms)
+    const now = Date.now()
+    if (!this.statLoggedAt){ this.statLoggedAt = now }
+    if (now - this.statLoggedAt < 2000){ return }
+    sttDebug(`stt[${this.peer}]: ${this.statFrames} frames, ` +
+      `avg rms ${(this.statSum / this.statFrames).toFixed(0)}, peak ${this.statPeak.toFixed(0)}, ` +
+      `speech needs > ${this.vad.threshold.toFixed(0)}, ` +
+      `${this.vad.speaking ? 'in speech' : 'idle'}`)
+    this.statFrames = 0
+    this.statSum = 0
+    this.statPeak = 0
+    this.statLoggedAt = now
+  }
+
+  //  Once the session has settled on a language, tell the recognizer: auto-detection per
+  //  utterance is where the flapping comes from, and a told language also recognizes better.
+  private hint(){
+    return this.lang !== 'auto' ? this.lang : (this.tally.language || 'auto')
+  }
+
   private requestInterim(){
     const segment = this.segment
-    //  One in-flight interim at a time: a slow backend must never build a queue of stale
-    //  hypotheses that arrive after the utterance is already finished.
-    if (!segment || this.interimBusy || !getSelector().configured){ return }
-    this.interimBusy = true
+    //  Skip whenever anything else is already running: a hypothesis that has to wait its turn is
+    //  stale by the time it is answered, and the wait is taken from the finals.
+    if (!segment || this.busy || !this.interimWorthTrying || !getSelector().configured){ return }
+    this.busy = true
     const pcm = Buffer.concat(this.segmentChunks)
-    getSelector().transcribe(pcm, this.lang).then((res) => {
-      this.interimBusy = false
+    const startedAt = Date.now()
+    getSelector().transcribe(pcm, this.hint()).then((res) => {
+      this.busy = false
+      //  Slower than the audio it transcribed: with this backend the interim can never arrive
+      //  before the final it belongs to, so stop paying for them until a faster one takes over.
+      const audioMs = pcm.length / 2 / SAMPLE_RATE * 1000
+      if (Date.now() - startedAt > audioMs){
+        this.interimWorthTrying = false
+        sttDebug(`stt: interim results off for ${this.peer} -- the backend is slower than speech`)
+      }
       //  Drop a result that lost the race with the segment's final: the client would otherwise
       //  see the finished text replaced by an older, partial hypothesis.
       if (!res || !res.text || segment.closed || this.stopped){ return }
-      this.emit(segment.sid, res.text, res.lang, false)
-    }).catch(() => { this.interimBusy = false })
+      this.emit(segment.sid, res.text, this.tally.resolve(res.lang), false)
+    }).catch(() => { this.busy = false })
   }
 
   //  `afterStop` is set by the final flush in stop(): the session is already stopped, but this one
@@ -185,10 +239,22 @@ class SttSession{
       return
     }
     if (!getSelector().configured){ return }
-    getSelector().transcribe(pcm, this.lang).then((res) => {
-      if (!res || !res.text || (this.stopped && !afterStop)){ return }
-      this.emit(segment.sid, res.text, res.lang, true, durationMs, endedAt)
-    }).catch(e => { sttDebug(`stt: final transcription failed: ${e?.message}`) })
+    //  Queued, not fired: finals wait for each other instead of competing, so a backend that is
+    //  only just fast enough still answers all of them.
+    this.work = this.work.then(async () => {
+      this.busy = true
+      try{
+        const res = await getSelector().transcribe(pcm, this.hint())
+        if (!res || !res.text || (this.stopped && !afterStop)){ return }
+        //  Finals are the evidence: interim text is provisional and often shorter.
+        this.tally.add(res.lang, res.text)
+        this.emit(segment.sid, res.text, this.tally.resolve(res.lang), true, durationMs, endedAt)
+      }catch(e: any){
+        sttDebug(`stt: final transcription failed: ${e?.message}`)
+      }finally{
+        this.busy = false
+      }
+    })
   }
 
   //  durationMs travels with the final result so clients can tell continuous speech from a

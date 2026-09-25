@@ -2,7 +2,10 @@
 //  recognition sidecar, to verify the wire contract end to end -- WAV framing, the `lang`
 //  parameter and the response shape. Point it at whichever sidecar you want to test:
 //
-//      npx ts-node src/MediaServer/__tests__/sttBackendLive.ts <asr-url> [<gpu-status-url>] [<gpu-mode>]
+//      npx ts-node src/MediaServer/__tests__/sttBackendLive.ts <asr-url> [<gpu-status-url>] [<gpu-mode>] [<extra-json>]
+//
+//  <extra-json> is merged into the backend config, for services that need a dialect:
+//      '{"upload":"multipart","langParam":"language","langAuto":"auto"}'
 //
 //  Passing a <gpu-mode> that is ALREADY active checks the status/lock reads without switching
 //  anything; passing one that is not will ask the GPU to switch, stopping whatever runs there.
@@ -14,6 +17,7 @@ import {SttBackendSelector, SAMPLE_RATE} from '../SttBackend'
 const endpoint = process.argv[2] || 'http://127.0.0.1:18190/asr'
 const gpuStatus = process.argv[3]
 const gpuMode = process.argv[4]
+const extra = process.argv[5] ? JSON.parse(process.argv[5]) : {}
 
 function tone(seconds: number){
   const pcm = Buffer.alloc(SAMPLE_RATE * seconds * 2)
@@ -26,7 +30,8 @@ function tone(seconds: number){
 
 async function main(){
   const selector = new SttBackendSelector([
-    {kind: 'live', endpoint, gpuStatus, gpuMode, timeoutMs: 30000, apiKeyEnv: 'LM_HASELAB_API_KEY'},
+    {kind: 'live', endpoint, gpuStatus, gpuMode, timeoutMs: 30000,
+      apiKeyEnv: 'LM_HASELAB_API_KEY', ...extra},
   ])
   for (const lang of ['auto', 'ja']){
     const started = process.hrtime.bigint()

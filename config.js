@@ -124,10 +124,19 @@ module.exports = {
   //  `gpuMode` set, an *unlocked* GPU running something else is asked to switch into that mode
   //  (`POST <gpuStatus>/activate/<gpuMode>`) -- which stops whatever was running there, so only
   //  set it for a GPU whose other users accept that.
-  //    {kind:'sensevoice', endpoint:'https://.../SENSEVOICE/asr',
+  //
+  //  `upload`/`langParam`/`langAuto` cover the differences between services: bm/stt-sidecars
+  //  takes a raw WAV body and `lang` (absent = detect it), SenseVoice takes multipart `file` and
+  //  `language` (for which 'auto' is a value). `timeoutMs` has to cover the longest utterance the
+  //  VAD hands over (30s) at whatever speed the backend runs. With
+  //  `gpuMode` set, an *unlocked* GPU running something else is asked to switch into that mode
+  //  (`POST <gpuStatus>/activate/<gpuMode>`) -- which stops whatever was running there, so only
+  //  set it for a GPU whose other users accept that.
+  //    {kind:'sensevoice', endpoint:'https://.../SENSEVOICE/transcribe',
+  //     upload:'multipart', langParam:'language', langAuto:'auto',
   //     gpuStatus:'https://.../SWITCH5070TI', gpuMode:'sensevoice',
-  //     apiKeyEnv:'LM_HASELAB_API_KEY', timeoutMs:3000},
-  //    {kind:'cpuWhisper', endpoint:'http://localhost:8190/asr', timeoutMs:8000},
+  //     apiKeyEnv:'LM_HASELAB_API_KEY', timeoutMs:15000},
+  //    {kind:'cpuWhisper', endpoint:'http://localhost:8190/asr', timeoutMs:40000},
   //
   //  Host-side setup for both entries below: `stt-translation#hostwork` / `bm/stt-sidecars`.
   //  sensevoice's path is already publicly proxied (`lm-tool#arch`) but was **not live-tested

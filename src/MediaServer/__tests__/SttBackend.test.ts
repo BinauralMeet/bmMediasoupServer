@@ -1,6 +1,6 @@
 import {describe, it, expect, vi, afterEach} from 'vitest'
 import http from 'http'
-import {wavFromPcm16, breakerShouldSkip, breakerOnFailure, breakerOnSuccess, newBreakerState,
+import {stripEventTags, wavFromPcm16, breakerShouldSkip, breakerOnFailure, breakerOnSuccess, newBreakerState,
   SttBackendSelector, SttBackend, SttResult, HttpSttBackend} from '../SttBackend'
 
 //  A scriptable stand-in for an HTTP backend: each call takes the next entry of `script`
@@ -49,6 +49,17 @@ describe('wavFromPcm16', () => {
     expect(wav.readUInt32LE(28)).toBe(32000)      //  byte rate = 16000 * 1 * 2
     expect(wav.readUInt16LE(34)).toBe(16)         //  bits per sample
     expect(wav.readUInt32LE(40)).toBe(pcm.length) //  data size
+  })
+})
+
+describe('stripEventTags', () => {
+  it('removes the event and emotion markers SenseVoice mixes into the text', () => {
+    expect(stripEventTags('🎼Yeah.')).toBe('Yeah.')
+    expect(stripEventTags('😊 こんにちは 👏')).toBe('こんにちは')
+  })
+  it('leaves ordinary text alone', () => {
+    expect(stripEventTags('And so, my fellow Americans.')).toBe('And so, my fellow Americans.')
+    expect(stripEventTags('これは翻訳のテストです。')).toBe('これは翻訳のテストです。')
   })
 })
 

@@ -22,7 +22,10 @@ export interface VadConfig{
 
 export const defaultVadConfig: VadConfig = {
   frameMs: 20,
-  hangoverMs: 500,
+  //  Long enough to sit through the pause inside a sentence. Shorter cuts mid-clause, which
+  //  costs the recognizer the context it needs -- and context is most of what decides whether a
+  //  loanword or a name comes out right.
+  hangoverMs: 800,
   minSpeechMs: 200,
   maxSegmentMs: 30 * 1000,
   interimMs: 1500,
@@ -63,6 +66,8 @@ export class VadLogic{
   }
 
   get config(){ return this.cfg }
+  //  For diagnostics: the level speech has to beat right now.
+  get threshold(){ return Math.max(this.noiseFloor * this.cfg.thresholdRatio, this.cfg.absMinRms) }
   get speaking(){ return this.inSpeech }
 
   //  Returns every event this frame produced. A frame can both close a segment and open the next
