@@ -42,10 +42,41 @@ describe('LanguageTally', () => {
 
   it('overrides a single misheard utterance once settled', () => {
     const tally = new LanguageTally()
-    for (let i = 0; i < 3; i += 1){ tally.add('ja', long('ja')) }
+    let t = 0
+    for (let i = 0; i < 3; i += 1){ tally.add('ja', long('ja'), t += 5000) }
     //  One sentence comes back as English -- the subtitle stays Japanese rather than flipping,
     //  which is what makes some utterances translate and others not.
+    tally.add('en', 'OK', t += 5000)
+    expect(tally.language).toBe('ja')
     expect(tally.resolve('en')).toBe('ja')
+  })
+
+  it('follows a speaker who switches language, within about half a minute', () => {
+    const tally = new LanguageTally()
+    let t = 0
+    //  Two minutes of Japanese: as much history as anyone accumulates.
+    for (let i = 0; i < 24; i += 1){ tally.add('ja', long('ja'), t += 5000) }
+    expect(tally.language).toBe('ja')
+
+    //  They switch to English and keep talking at the same rate.
+    const switchedAt = t
+    let followedAfter = 0
+    for (let i = 0; i < 24 && !followedAfter; i += 1){
+      tally.add('en', long('en'), t += 5000)
+      if (tally.language === 'en'){ followedAfter = t - switchedAt }
+    }
+    expect(followedAfter).toBeGreaterThan(0)
+    expect(followedAfter).toBeLessThanOrEqual(60000)
+  })
+
+  it('does not drop back to unknown during a lull', () => {
+    const tally = new LanguageTally()
+    let t = 0
+    for (let i = 0; i < 4; i += 1){ tally.add('ja', long('ja'), t += 5000) }
+    expect(tally.language).toBe('ja')
+    //  Five minutes of silence, then one short word: the old decision still stands.
+    tally.add('ja', 'はい', t += 300000)
+    expect(tally.language).toBe('ja')
   })
 
   it('needs a clear lead, not just a majority of one utterance', () => {
