@@ -25,7 +25,10 @@ export function wantedLangs(room: RoomStore): (string|undefined)[]{
     const stored = p.storedMessages.get(MessageType.PARTICIPANT_STT_LANG)
     if (!stored){ return undefined }
     try{
-      return (JSON.parse(stored.v) as SttLangInfo).show
+      const info = JSON.parse(stored.v) as SttLangInfo
+      //  Somebody who is not showing subtitles is not a reason to translate anything. `on`
+      //  missing means a client older than that field, which is read as showing them.
+      return info.on === false ? undefined : info.show
     }catch{
       return undefined
     }
