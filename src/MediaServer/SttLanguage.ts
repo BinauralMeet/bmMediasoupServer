@@ -42,10 +42,16 @@ const LATIN_WEIGHT = 0.4
 const MIN_EVIDENCE = 15      //  ~15 Japanese characters, or ~37 of English
 const MIN_UTTERANCES = 2     //  never let one misheard sentence decide the whole session
 const LEAD_SHARE = 0.6
-//  How fast the past stops counting. At 20s, someone who switches language and keeps talking
-//  carries the tally across in around half a minute -- fast enough to follow a real switch,
-//  slow enough that one misheard sentence cannot cause one.
+//  How fast the past stops counting, measured in *speaking* time rather than wall clock: at 20s
+//  of speech, someone who switches language and keeps talking carries the tally across in around
+//  half a minute -- fast enough to follow a real switch, slow enough that one misheard sentence
+//  cannot cause one.
 const HALF_LIFE_MS = 20000
+//  Wall clock only counts while this speaker is talking, plus this much around each utterance.
+//  Otherwise someone who listens for ten minutes comes back with their evidence decayed to
+//  nothing and the next thing they say -- possibly misheard -- decides their language alone.
+//  Listening is not evidence of having switched language.
+const IDLE_GRACE_MS = 5000
 
 export function evidenceWeight(text: string){
   let weight = 0
@@ -68,19 +74,21 @@ export class LanguageTally{
   private decided = ''
   private lastAt = 0
 
-  //  `lang` is what the recognizer reported (or the script suggested) for this utterance.
-  //  `now` is injectable so the decay can be tested without waiting for it.
-  add(lang: string, text: string, now = Date.now()){
+  //  `lang` is what the recognizer reported (or the script suggested) for this utterance, and
+  //  `durationMs` how long it lasted -- the decay is charged against that, not against the wall
+  //  clock. `now` is injectable so the decay can be tested without waiting for it.
+  add(lang: string, text: string, now = Date.now(), durationMs = 0){
     if (!lang || !text){ return }
-    this.fade(now)
+    this.fade(now, durationMs)
     this.chars.set(lang, (this.chars.get(lang) || 0) + evidenceWeight(text))
     this.heard += 1
     this.decide()
   }
 
-  private fade(now: number){
+  private fade(now: number, durationMs: number){
     if (this.lastAt){
-      const factor = Math.pow(0.5, (now - this.lastAt) / HALF_LIFE_MS)
+      const spoken = Math.min(now - this.lastAt, durationMs + IDLE_GRACE_MS)
+      const factor = Math.pow(0.5, spoken / HALF_LIFE_MS)
       this.chars.forEach((weight, lang) => { this.chars.set(lang, weight * factor) })
     }
     this.lastAt = now

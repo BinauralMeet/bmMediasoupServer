@@ -252,8 +252,9 @@ class SttSession{
         sttDebug(`stt: ${segment.sid} ${durationMs}ms audio, queued ${queuedFor}ms, ` +
           `recognized in ${Date.now() - startedAt}ms`)
         if (!res || !res.text || (this.stopped && !afterStop)){ return }
-        //  Finals are the evidence: interim text is provisional and often shorter.
-        this.tally.add(res.lang, res.text)
+        //  Finals are the evidence: interim text is provisional and often shorter. The
+        //  duration goes with it because the tally ages its evidence by speaking time.
+        this.tally.add(res.lang, res.text, Date.now(), durationMs)
         this.emit(segment.sid, res.text, this.tally.resolve(res.lang), true, durationMs, endedAt)
       }catch(e: any){
         sttDebug(`stt: final transcription failed: ${e?.message}`)

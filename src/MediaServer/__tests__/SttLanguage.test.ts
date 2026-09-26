@@ -72,11 +72,30 @@ describe('LanguageTally', () => {
   it('does not drop back to unknown during a lull', () => {
     const tally = new LanguageTally()
     let t = 0
-    for (let i = 0; i < 4; i += 1){ tally.add('ja', long('ja'), t += 5000) }
+    for (let i = 0; i < 4; i += 1){ tally.add('ja', long('ja'), t += 5000, 3000) }
     expect(tally.language).toBe('ja')
     //  Five minutes of silence, then one short word: the old decision still stands.
-    tally.add('ja', 'はい', t += 300000)
+    tally.add('ja', 'はい', t += 300000, 500)
     expect(tally.language).toBe('ja')
+  })
+
+  it('does not let listening decay the evidence away', () => {
+    const listener = new LanguageTally()
+    const talker = new LanguageTally()
+    let t = 0
+    //  Both establish Japanese, then one of them listens for ten minutes while the other keeps
+    //  talking. Listening is not evidence of having switched language, so when the listener
+    //  finally speaks, one English sentence must not carry their language away on its own.
+    for (let i = 0; i < 6; i += 1){
+      listener.add('ja', long('ja'), t += 5000, 3000)
+      talker.add('ja', long('ja'), t, 3000)
+    }
+    const quiet = t + 600000
+    listener.add('en', long('en'), quiet, 3000)
+    expect(listener.language).toBe('ja')
+    //  ...whereas the same sentence after the same wall-clock gap, if it had been spent
+    //  speaking, would count for far more.
+    expect(talker.language).toBe('ja')
   })
 
   it('needs a clear lead, not just a majority of one utterance', () => {
