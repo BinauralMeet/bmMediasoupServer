@@ -12,6 +12,7 @@
 //  `GET <gpuStatus>/lock/status` returns `{"locked": bool}`; we only ever read it.
 import axios from 'axios'
 import {guessLang} from './SttLanguage'
+import {GpuLockReader, GPU_API_TIMEOUT_MS, groupIntoRungs, orderPool} from './GpuPool'
 
 //  Local, like media.ts's own helpers: MainServer/utils.ts opens a log file at import time,
 //  which has no business happening in the media worker process.
@@ -23,6 +24,8 @@ const sttLog = console.log
 
 export interface SttBackendConfig{
   kind: string                //  free-form label used in logs ('sensevoice', 'cpuWhisper', ...)
+  name?: string               //  label in logs when several entries share a kind (default: kind)
+  pool?: string               //  entries naming the same pool are one rung, load-balanced (GpuPool.ts)
   endpoint: string            //  POST target for transcription
   gpuStatus?: string          //  base URL of the GPU's switch/lock API, when it shares a GPU
   gpuMode?: string            //  the mode that runs this recognizer; switched into when idle
@@ -110,24 +113,20 @@ export interface SttBackend{
   transcribe(pcm: Buffer, lang: string): Promise<SttResult>
 }
 
-const LOCK_STATUS_CACHE_MS = 10 * 1000
 //  Switching modes restarts a service and reloads a model, so asking again a few seconds later
 //  achieves nothing but noise. One attempt, then leave the GPU alone for a while.
 const ACTIVATE_RETRY_MS = 3 * 60 * 1000
-//  These calls cross a reverse proxy to another machine; 2s was tight enough to time out and
-//  make the GPU look unreadable when it was merely far away.
-const GPU_API_TIMEOUT_MS = 6000
 
 export class HttpSttBackend implements SttBackend{
   readonly name: string
   private cfg: SttBackendConfig
-  private lockCheckedAt = 0
-  private lockedCached = false
+  private lock?: GpuLockReader
   private activatedAt = 0
 
   constructor(cfg: SttBackendConfig){
     this.cfg = cfg
-    this.name = cfg.kind
+    this.name = cfg.name || cfg.kind
+    if (cfg.gpuStatus){ this.lock = new GpuLockReader(cfg.gpuStatus, () => this.headers) }
   }
 
   private get headers(){
@@ -139,25 +138,14 @@ export class HttpSttBackend implements SttBackend{
   }
 
   //  Reads the GPU's lock state; never acquires it. A lock means somebody is working there, so
-  //  we stay out of the way entirely. If the status endpoint itself is unreachable we assume
-  //  usable and let the transcribe call be the real test -- a monitoring endpoint being down is
-  //  not a reason to refuse a GPU that may well be idle.
+  //  we stay out of the way entirely (GpuLockReader: an unreadable lock counts as free).
   async usable(){
-    if (!this.cfg.gpuStatus){ return true }
+    if (!this.lock){ return true }
     const now = Date.now()
-    if (now - this.lockCheckedAt < LOCK_STATUS_CACHE_MS){ return !this.lockedCached }
-    this.lockCheckedAt = now
-    try{
-      const res = await axios.get(`${this.cfg.gpuStatus}/lock/status`,
-        {timeout: GPU_API_TIMEOUT_MS, headers: this.headers})
-      this.lockedCached = !!res.data?.locked
-      if (this.lockedCached){
-        sttDebug(`stt: ${this.name} skipped, GPU locked by someone else`)
+    if (await this.lock.locked(now)){
+      sttDebug(`stt: ${this.name} skipped, GPU locked by someone else`)
 
-        return false
-      }
-    }catch(e){
-      this.lockedCached = false
+      return false
     }
 
     return this.cfg.gpuMode ? await this.modeReady(now) : true
@@ -243,6 +231,10 @@ export class SttBackendSelector{
   private backends: SttBackend[]
   private states: BreakerState[]
   private breakerCfg: BreakerConfig
+  private rungs: number[][]
+  private labels: string[]      //  what transition logs name: the pool, or the backend itself
+  private inFlight: number[]
+  private rotation = 0
   private lastUsed = ''
 
   constructor(configs: SttBackendConfig[], breakerCfg: BreakerConfig = defaultBreakerConfig,
@@ -250,34 +242,58 @@ export class SttBackendSelector{
     this.backends = configs.map(make)
     this.states = configs.map(() => newBreakerState())
     this.breakerCfg = breakerCfg
+    this.rungs = groupIntoRungs(configs.map(c => c.pool))
+    this.labels = configs.map((c, i) => c.pool ? `pool ${c.pool}` : this.backends[i].name)
+    this.inFlight = configs.map(() => 0)
   }
 
   get configured(){ return this.backends.length > 0 }
 
-  //  Tries each backend in priority order and returns the first result. Returns undefined when
+  //  A rung's members in the order to try them. A lone backend is simply itself; a pool keeps
+  //  only its free members (all checked at once, so a machine that is merely idle in another
+  //  mode gets asked to switch even while its sibling answers) and puts the least busy first.
+  private async candidates(rung: number[], now: number): Promise<number[]>{
+    const open = rung.filter(i => !breakerShouldSkip(this.states[i], now))
+    if (rung.length === 1){ return open }
+    const usable = await Promise.all(open.map(i => this.backends[i].usable().catch(() => false)))
+    const free = open.filter((_, k) => usable[k])
+    this.rotation += 1
+
+    return orderPool(free, this.inFlight, this.rotation)
+  }
+
+  //  Tries each rung in priority order and returns the first result. Returns undefined when
   //  every backend is skipped or failing -- the caller drops the utterance and the call itself
   //  is unaffected (STT is the only thing that degrades).
   async transcribe(pcm: Buffer, lang: string): Promise<SelectorResult|undefined>{
     const now = Date.now()
-    for (let i = 0; i < this.backends.length; i += 1){
-      const backend = this.backends[i]
-      if (breakerShouldSkip(this.states[i], now)){ continue }
-      try{
-        if (!await backend.usable()){ continue }
-        const result = await backend.transcribe(pcm, lang)
-        this.states[i] = breakerOnSuccess(this.states[i])
-        //  Log only transitions: a meeting that silently drops from GPU to CPU changes its
-        //  recognition quality with nothing else to show for it (`stt-translation#limits`).
-        if (this.lastUsed !== backend.name){
-          sttLog(`stt: using backend '${backend.name}'` +
-            (this.lastUsed ? ` (was '${this.lastUsed}')` : ''))
-          this.lastUsed = backend.name
-        }
+    for (const rung of this.rungs){
+      const pooled = rung.length > 1
+      for (const i of await this.candidates(rung, now)){
+        const backend = this.backends[i]
+        this.inFlight[i] += 1
+        try{
+          //  Pool members were already checked by candidates().
+          if (!pooled && !await backend.usable()){ continue }
+          const result = await backend.transcribe(pcm, lang)
+          this.states[i] = breakerOnSuccess(this.states[i])
+          //  Log only transitions: a meeting that silently drops from GPU to CPU changes its
+          //  recognition quality with nothing else to show for it (`stt-translation#limits`).
+          //  A pool counts as one, or an evenly shared load would log every utterance.
+          if (this.lastUsed !== this.labels[i]){
+            sttLog(`stt: using backend '${this.labels[i]}'` +
+              (this.lastUsed ? ` (was '${this.lastUsed}')` : ''))
+            this.lastUsed = this.labels[i]
+          }
+          if (pooled){ sttDebug(`stt: ${this.labels[i]} answered by '${backend.name}'`) }
 
-        return {...result, backend: backend.name}
-      }catch(e: any){
-        this.states[i] = breakerOnFailure(this.states[i], now, this.breakerCfg)
-        sttDebug(`stt: backend '${backend.name}' failed: ${e?.message}`)
+          return {...result, backend: backend.name}
+        }catch(e: any){
+          this.states[i] = breakerOnFailure(this.states[i], now, this.breakerCfg)
+          sttDebug(`stt: backend '${backend.name}' failed: ${e?.message}`)
+        }finally{
+          this.inFlight[i] -= 1
+        }
       }
     }
 

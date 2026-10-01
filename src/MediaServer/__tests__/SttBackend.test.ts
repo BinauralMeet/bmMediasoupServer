@@ -295,3 +295,81 @@ describe('SttBackendSelector', () => {
     expect(await selector.transcribe(Buffer.alloc(0), 'ja')).toBeUndefined()
   })
 })
+
+describe('SttBackendSelector with a pool', () => {
+  //  Like selectorOf, but each backend is given the pool named at the same position.
+  function pooledOf(entries: [SttBackend, string|undefined][]){
+    let i = 0
+
+    return new SttBackendSelector(entries.map(([b, pool]) => ({kind: b.name, endpoint: '', pool})),
+      {failuresToOpen: 2, openMs: 1000}, () => entries[i++][0])
+  }
+
+  it('alternates between two free machines instead of always using the first', async () => {
+    const a = backend('gpuA', 'ok')
+    const b = backend('gpuB', 'ok')
+    const cpu = backend('cpu', 'ok')
+    const selector = pooledOf([[a, 'gpu'], [b, 'gpu'], [cpu, undefined]])
+    for (let n = 0; n < 4; n += 1){ await selector.transcribe(Buffer.alloc(0), 'ja') }
+    expect(a.calls).toBe(2)
+    expect(b.calls).toBe(2)
+    expect(cpu.calls).toBe(0)
+  })
+
+  it('sends everything to the free machine while the other one is locked', async () => {
+    const a = backend('gpuA', 'busy')
+    const b = backend('gpuB', 'ok')
+    const selector = pooledOf([[a, 'gpu'], [b, 'gpu']])
+    for (let n = 0; n < 3; n += 1){
+      expect((await selector.transcribe(Buffer.alloc(0), 'ja'))?.backend).toBe('gpuB')
+    }
+    expect(a.calls).toBe(0)
+  })
+
+  it('prefers the machine with fewer requests in flight', async () => {
+    let release: () => void = () => {}
+    //  gpuA holds on to its first request until released, as a slow utterance would.
+    class Slow extends FakeBackend{
+      async transcribe(): Promise<SttResult>{
+        this.calls += 1
+        if (this.calls === 1){ await new Promise<void>((r) => { release = r }) }
+
+        return {text: `${this.name} text`, lang: 'ja'}
+      }
+    }
+    const a = new Slow('gpuA', ['ok'])
+    const b = backend('gpuB', 'ok')
+    const selector = pooledOf([[a, 'gpu'], [b, 'gpu']])
+    //  Whichever member the first request lands on, find out which is busy and check that the
+    //  next two both go to the other one.
+    const first = selector.transcribe(Buffer.alloc(0), 'ja')
+    await new Promise(r => setTimeout(r, 0))
+    if (a.calls === 1){
+      await selector.transcribe(Buffer.alloc(0), 'ja')
+      await selector.transcribe(Buffer.alloc(0), 'ja')
+      expect(b.calls).toBe(2)
+      expect(a.calls).toBe(1)
+    }else{
+      expect(b.calls).toBe(1)
+    }
+    release()
+    await first
+  })
+
+  it('retries the sibling when one member fails, before leaving the pool', async () => {
+    const a = backend('gpuA', 'fail')
+    const b = backend('gpuB', 'ok')
+    const cpu = backend('cpu', 'ok')
+    const selector = pooledOf([[a, 'gpu'], [b, 'gpu'], [cpu, undefined]])
+    for (let n = 0; n < 3; n += 1){
+      expect((await selector.transcribe(Buffer.alloc(0), 'ja'))?.backend).toBe('gpuB')
+    }
+    expect(cpu.calls).toBe(0)
+  })
+
+  it('falls to the next rung only when every member is locked or failing', async () => {
+    const selector = pooledOf([[backend('gpuA', 'busy'), 'gpu'], [backend('gpuB', 'fail'), 'gpu'],
+      [backend('cpu', 'ok'), undefined]])
+    expect((await selector.transcribe(Buffer.alloc(0), 'ja'))?.backend).toBe('cpu')
+  })
+})

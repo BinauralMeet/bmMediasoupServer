@@ -9,6 +9,9 @@ import {MessageType, SpeechTranslation, SttLangInfo} from './DataMessageType'
 import {RoomStore} from './Stores'
 import {collectTargetLangs, normalizeLang, TranslationCache} from './TranslationTargets'
 import {consoleDebug} from '../MainServer/utils'
+import {GpuLockReader, groupIntoRungs, orderPool} from '../MediaServer/GpuPool'
+import {BreakerState, breakerOnFailure, breakerOnSuccess, breakerShouldSkip, newBreakerState}
+  from '../MediaServer/SttBackend'
 
 const config = require('../../config')
 
@@ -39,6 +42,53 @@ interface TranslationEndpoint{
   endpoint: string
   apiKeyEnv?: string
   timeoutMs?: number
+  //  Endpoints naming the same pool are interchangeable copies of one service on different GPU
+  //  machines: one rung, load-balanced, the sibling retried if one fails (MediaServer/GpuPool.ts).
+  pool?: string
+  //  The GPU's switch/lock API. A pooled endpoint whose GPU is locked is left alone while a
+  //  sibling answers; it is only read, never acquired, same as for STT.
+  gpuStatus?: string
+}
+
+function authHeaders(target: TranslationEndpoint){
+  const headers: {[key: string]: string} = {}
+  const key = target.apiKeyEnv ? process.env[target.apiKeyEnv] : undefined
+  if (key){ headers.Authorization = `Bearer ${key}` }
+
+  return headers
+}
+
+//  Per-endpoint bookkeeping for pools, keyed by URL (config is read fresh on every call).
+interface EndpointState{
+  inFlight: number
+  breaker: BreakerState
+  lock?: GpuLockReader
+}
+const states = new Map<string, EndpointState>()
+let rotation = 0
+
+function stateOf(target: TranslationEndpoint): EndpointState{
+  let st = states.get(target.endpoint)
+  if (!st){
+    st = {inFlight: 0, breaker: newBreakerState(),
+      lock: target.gpuStatus ? new GpuLockReader(target.gpuStatus, () => authHeaders(target)) : undefined}
+    states.set(target.endpoint, st)
+  }
+
+  return st
+}
+
+//  A lone endpoint is always tried, as before pools existed. A pool keeps its members that are
+//  neither tripped nor locked, least busy first.
+async function candidates(rung: TranslationEndpoint[], now: number): Promise<TranslationEndpoint[]>{
+  if (rung.length === 1){ return rung }
+  const open = rung.filter(t => !breakerShouldSkip(stateOf(t).breaker, now))
+  const locked = await Promise.all(open.map(t => stateOf(t).lock?.locked(now) ?? false))
+  const free = open.filter((_, k) => !locked[k])
+  rotation += 1
+  const order = orderPool(free.map((_, k) => k), free.map(t => stateOf(t).inFlight), rotation)
+
+  return order.map(k => free[k])
 }
 
 //  One entry, or several tried in order. Several is how a deployment gets both quality and
@@ -55,9 +105,7 @@ function endpoints(): TranslationEndpoint[]{
 }
 
 async function callOne(target: TranslationEndpoint, text: string, src: string, dsts: string[]){
-  const headers: {[key: string]: string} = {}
-  const key = target.apiKeyEnv ? process.env[target.apiKeyEnv] : undefined
-  if (key){ headers.Authorization = `Bearer ${key}` }
+  const headers = authHeaders(target)
   const res = await axios.post(target.endpoint, {texts: [text], src, dsts},
     {timeout: target.timeoutMs || config.translation?.timeoutMs || 5000, headers})
 
@@ -73,16 +121,30 @@ async function callOne(target: TranslationEndpoint, text: string, src: string, d
   return out
 }
 
-async function callBackend(text: string, src: string, dsts: string[]): Promise<{[lang: string]: string}>{
+export async function callBackend(text: string, src: string, dsts: string[]): Promise<{[lang: string]: string}>{
   const out: {[lang: string]: string} = {}
   let missing = dsts
-  for (const target of endpoints()){
-    try{
-      const got = await callOne(target, text, src, missing)
-      Object.assign(out, got)
-      missing = missing.filter(lang => out[lang] === undefined)
-    }catch(e: any){
-      consoleDebug(`translation: ${target.endpoint} failed: ${e?.message}`)
+  const all = endpoints()
+  const now = Date.now()
+  for (const indices of groupIntoRungs(all.map(t => t.pool))){
+    const rung = indices.map(i => all[i])
+    //  The first member that answers settles the rung: its siblings run the same model, so a
+    //  language it left out (low confidence, unsupported pair) would be left out by them too.
+    for (const target of await candidates(rung, now)){
+      const st = stateOf(target)
+      st.inFlight += 1
+      try{
+        const got = await callOne(target, text, src, missing)
+        st.breaker = breakerOnSuccess(st.breaker)
+        Object.assign(out, got)
+        missing = missing.filter(lang => out[lang] === undefined)
+        break
+      }catch(e: any){
+        if (rung.length > 1){ st.breaker = breakerOnFailure(st.breaker, now) }
+        consoleDebug(`translation: ${target.endpoint} failed: ${e?.message}`)
+      }finally{
+        st.inFlight -= 1
+      }
     }
     if (!missing.length){ break }
   }
