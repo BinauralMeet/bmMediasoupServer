@@ -9,6 +9,11 @@ config ?? console.warn('GoogleServer.ts failed to load config from "../../config
 config.googleOAuth2Config ?? console.warn('GoogleServer.ts failed to read location of oauth2 config')
 const configGDrive = config.googleOAuth2Config ? require(`../../${config.googleOAuth2Config}`) : undefined
 configGDrive ?? console.warn(`GoogleServer.ts failed to load configGDrive from "../../${config.googleOAuth2Config}"`)
+//  Drive folder that pasted images are uploaded into. Deployment-specific, so it lives in each
+//  server's config.js rather than here (this repository is public). The folder must let the
+//  service account add files and let anyone with a link view them -- participants see the image
+//  through its thumbnail URL with their own Google account, or none.
+const uploadFolderId: string|undefined = config.googleDriveUploadFolderId
 
 export class GoogleServer {
     private _clientId: string;
@@ -140,11 +145,14 @@ export class GoogleServer {
       const fileName = fileName_;
       const dataBuffer = Buffer.from(base64Data, 'base64');
 
+      if (!uploadFolderId){
+        console.error('GDrive upload refused: config.googleDriveUploadFolderId is not set')
+
+        return Promise.resolve('upload error')
+      }
       const fileMetadata = {
         name: fileName,
-        // replace the parent with the folder id you want to upload the file to
-        //Hase folder
-        parents: ['1nNj7kGJQfDIVDfhgckNwVDhTwsBz7rza'],
+        parents: [uploadFolderId],
       };
       const media = {
         mimeType: 'image/jpeg/png/jpg',
@@ -167,7 +175,10 @@ export class GoogleServer {
           }
         })
         .catch(error => {
-          console.error(error)
+          //  One line: the full GaxiosError is a hundred lines of request internals and hides the
+          //  part that matters (2026-10-02: a deleted folder showed up only as "File not found").
+          console.error(`GDrive upload failed (folder ${uploadFolderId}, file "${fileName}"): ` +
+            `${error?.code ?? ''} ${error?.message ?? error}`)
           resolve("upload error")
         });
       });
