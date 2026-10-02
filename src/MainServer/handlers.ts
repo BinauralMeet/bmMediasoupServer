@@ -76,7 +76,7 @@ export function initHandlers(){
   //  Gyazo OAuth: the client brings the authorization code it got back from Gyazo, and this
   //  trades it for that user's own access token -- the exchange needs the app's client_secret,
   //  which must never reach a browser. The token goes back to that client only; uploads are then
-  //  made by the client itself, into the user's own Gyazo (bm workspace doc, `image-upload`).
+  //  made by the client itself, into the user's own Gyazo (bm workspace doc `binaural-meet-image-upload`).
   handlersForPeer.set('gyazoToken', (base, peer)=>{
     const msg = base as any
     const reply = (fields: {token?: string, error?: string}) =>
