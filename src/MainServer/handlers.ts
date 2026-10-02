@@ -12,6 +12,8 @@ import { deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWork
 import { Peer, toMSRemotePeer } from "./types";
 import { consoleDebug, consoleError, stamp, userLog } from "./utils";
 
+const config = require("../../config")
+
 export function initHandlers(){
   //  handlers for peer
   handlersForPeer.set('join',(base, peer)=>{
@@ -60,6 +62,44 @@ export function initHandlers(){
     deletePeer(peer)
   })
   handlersForPeer.set('pong', (_base)=>{})
+
+  //  What a client saw happen to its connections since its last join, plus which browser it is
+  //  (binaural-meet ConnectionLog.ts). One line per join in main_user.log, next to the join
+  //  itself, so a disconnect seen here can be read together with what the client saw.
+  handlersForPeer.set('clientLog', (base, peer)=>{
+    const msg = base as any
+    const events = Array.isArray(msg.events) ? msg.events.slice(-40) : []
+    const line = JSON.stringify({ua: `${msg.ua ?? ''}`.slice(0, 300), online: msg.online, net: msg.net, events})
+    userLog.log(`${stamp()}: clientLog ${peer.peer} room '${peer.room?.id ?? ''}' ${line.slice(0, 6000)}`)
+  })
+
+  //  Gyazo OAuth: the client brings the authorization code it got back from Gyazo, and this
+  //  trades it for that user's own access token -- the exchange needs the app's client_secret,
+  //  which must never reach a browser. The token goes back to that client only; uploads are then
+  //  made by the client itself, into the user's own Gyazo (bm workspace doc, `image-upload`).
+  handlersForPeer.set('gyazoToken', (base, peer)=>{
+    const msg = base as any
+    const reply = (fields: {token?: string, error?: string}) =>
+      sendMSMessage({type: 'gyazoToken', sn: msg.sn, ...fields} as any, peer.ws)
+    const gyazo = config.gyazo
+    if (!gyazo?.clientId || !gyazo?.clientSecret){ reply({error: 'gyazo is not configured on this server'}); return }
+    if (typeof msg.code !== 'string' || !msg.code){ reply({error: 'no code'}); return }
+    const body = new URLSearchParams({client_id: gyazo.clientId, client_secret: gyazo.clientSecret,
+      redirect_uri: msg.redirectUri || gyazo.redirectUri, code: msg.code, grant_type: 'authorization_code'})
+    fetch('https://gyazo.com/oauth/token', {method: 'POST', body}).then(async (res) => {
+      const json: any = await res.json().catch(() => ({}))
+      if (res.ok && typeof json.access_token === 'string'){
+        userLog.log(`${stamp()}: ${peer.peer} connected Gyazo`)
+        reply({token: json.access_token})
+      }else{
+        console.warn(`Gyazo token exchange failed for ${peer.peer}: ${res.status} ${JSON.stringify(json).slice(0, 200)}`)
+        reply({error: `gyazo refused (${res.status})`})
+      }
+    }).catch((e) => {
+      console.warn(`Gyazo token exchange failed for ${peer.peer}: ${e?.message}`)
+      reply({error: 'gyazo unreachable'})
+    })
+  })
 
   // handle user upload image to google drive, return the file id
   handlersForPeer.set('uploadFile', (base, peer)=>{
