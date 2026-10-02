@@ -78,6 +78,29 @@ mediasoupシグナリングプロトコルを話す。`vrcss`はデータ同期�
 対になっており、ワイヤーフォーマットは変更せず両側の実装だけを一致させて
 解決した(両者は検証済み)。
 
+#### `clientLog`(接続の記録) {#client-log}
+
+サーバーには「ソケットがどのコードで閉じたか」しか見えず、それが参加者の再読み込みなのか、
+クライアント自身の再接続なのか、ネットワーク断なのかは分からない。binaural-meetは、RTC・Dataの
+websocketのclose(コードと理由)、自分の再接続の開始、transportの`failed`/`disconnected`、
+ページの終了、オンライン/オフラインの切り替えをlocalStorageに貯め(最大40件、`ConnectionLog.ts`)、
+**次に`join`したとき**、ブラウザの種類と一緒に`clientLog`として送る。main(`handlers.ts`)は
+これを`main_user.log`に、その`join`の行のすぐ後に1行で書く:
+
+```
+2026-10-02, 19:30:01.234: clientLog <peer> room 'haselab' {"ua":"...","online":true,"net":"4g","events":[{"t":"...","k":"rtcClose","d":"code:1006 clean:false"},...]}
+```
+
+`k`の種類: `rtcClose`・`rtcError`・`dataClose`・`dataError`・`reconnectRtc`・`reconnectData`・
+`transport`(`send failed`等)・`unload`・`online`・`offline`。返事は返さない。
+
+#### `gyazoToken` {#gyazo-token}
+
+Gyazoとの連携(`binaural-meet-image-upload`)で、クライアントがGyazoから受け取った認可コードを、
+その人のアクセストークンに交換する。交換にはアプリの`client_secret`が要るので、mainの
+`config.gyazo`(`clientId`・`clientSecret`・`redirectUri`)にだけ置き、トークンは要求した
+クライアントにだけ返す。画像そのものはmainを通らない。
+
 ## セキュリティ上の要点 {#security}
 
 - 部屋ログインの要否・admin管理はGoogle Drive上の設定ファイル
