@@ -1,7 +1,7 @@
 import {describe, it, expect, vi, afterEach} from 'vitest'
 import http from 'http'
 import {stripEventTags, wavFromPcm16, breakerShouldSkip, breakerOnFailure, breakerOnSuccess, newBreakerState,
-  SttBackendSelector, SttBackend, SttResult, HttpSttBackend} from '../SttBackend'
+  SttBackendSelector, SttBackend, SttResult, HttpSttBackend, WARM_INTERVAL_MS} from '../SttBackend'
 
 //  A scriptable stand-in for an HTTP backend: each call takes the next entry of `script`
 //  ('ok' | 'fail' | 'busy') so a test can describe a sequence of GPU availability.
@@ -371,5 +371,88 @@ describe('SttBackendSelector with a pool', () => {
     const selector = pooledOf([[backend('gpuA', 'busy'), 'gpu'], [backend('gpuB', 'fail'), 'gpu'],
       [backend('cpu', 'ok'), undefined]])
     expect((await selector.transcribe(Buffer.alloc(0), 'ja'))?.backend).toBe('cpu')
+  })
+})
+
+describe('warm-up', () => {
+  //  One server playing both roles: the GPU switch API and the recognizer behind it.
+  function machine(opts: {locked: boolean, modes: string[]}){
+    const calls: string[] = []
+    const server = http.createServer((req, res) => {
+      req.resume()
+      req.on('end', () => {
+        const url = new URL(req.url!, 'http://x')
+        calls.push(`${req.method} ${url.pathname}`)
+        let body: any = {}
+        if (url.pathname === '/lock/status'){ body = {locked: opts.locked} }
+        if (url.pathname === '/status'){ body = {active_modes: opts.modes} }
+        if (url.pathname.startsWith('/activate/')){ body = {} }
+        if (url.pathname === '/asr'){ body = {text: '', lang: 'ja'} }
+        res.writeHead(200, {'content-type': 'application/json'})
+        res.end(JSON.stringify(body))
+      })
+    })
+
+    return new Promise<{url: string, calls: string[], close: () => void}>((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        resolve({url: `http://127.0.0.1:${(server.address() as any).port}`, calls,
+          close: () => server.close()})
+      })
+    })
+  }
+  const gpuBackend = (url: string) => new HttpSttBackend({kind: 'gpu', endpoint: `${url}/asr`,
+    gpuStatus: url, gpuMode: 'gpuwhisper'})
+
+  it('sends one throwaway recognition to a GPU already in its mode, then not again for a while', async () => {
+    const m = await machine({locked: false, modes: ['gpuwhisper']})
+    try{
+      const b = gpuBackend(m.url)
+      await b.warmUp()
+      await b.warmUp()
+      expect(m.calls.filter(c => c === 'POST /asr').length).toBe(1)
+      vi.useFakeTimers()
+      vi.setSystemTime(Date.now() + WARM_INTERVAL_MS + 1000)
+      await b.warmUp()
+      expect(m.calls.filter(c => c === 'POST /asr').length).toBe(2)
+    }finally{ m.close() }
+  })
+
+  it('leaves a locked GPU entirely alone', async () => {
+    const m = await machine({locked: true, modes: ['hidream']})
+    try{
+      await gpuBackend(m.url).warmUp()
+      expect(m.calls).toEqual(['GET /lock/status'])
+    }finally{ m.close() }
+  })
+
+  it('asks an idle GPU in another mode to switch, without sending it audio yet', async () => {
+    const m = await machine({locked: false, modes: ['hidream']})
+    try{
+      await gpuBackend(m.url).warmUp()
+      expect(m.calls).toContain('POST /activate/gpuwhisper')
+      expect(m.calls).not.toContain('POST /asr')
+    }finally{ m.close() }
+  })
+
+  it('does nothing for a backend without a GPU switch API', async () => {
+    const m = await machine({locked: false, modes: []})
+    try{
+      await new HttpSttBackend({kind: 'cpu', endpoint: `${m.url}/asr`}).warmUp()
+      expect(m.calls).toEqual([])
+    }finally{ m.close() }
+  })
+
+  it('the selector warms every backend that can be warmed and never throws', async () => {
+    const warmed: string[] = []
+    const make = (name: string, fail: boolean): SttBackend => ({
+      name, usable: async () => true, transcribe: async () => ({text: '', lang: 'ja'}),
+      warmUp: async () => { warmed.push(name); if (fail){ throw new Error('down') } },
+    })
+    const backends = [make('a', true), make('b', false), backend('cpu', 'ok')]
+    let i = 0
+    const selector = new SttBackendSelector(backends.map(b => ({kind: b.name, endpoint: ''})),
+      undefined, () => backends[i++])
+    await selector.warmUp()
+    expect(warmed.sort()).toEqual(['a', 'b'])
   })
 })

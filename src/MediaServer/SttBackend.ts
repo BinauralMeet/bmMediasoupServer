@@ -111,6 +111,26 @@ export interface SttBackend{
   //  Cheap pre-check. False means "someone else is using the GPU" -- not an error, just skip.
   usable(): Promise<boolean>
   transcribe(pcm: Buffer, lang: string): Promise<SttResult>
+  //  Gets the backend ready before anyone speaks (stt-translation#warmup). Optional: a backend
+  //  with nothing to warm simply lacks it.
+  warmUp?(): Promise<void>
+}
+
+//  A warm-up is one throwaway request; doing it again within this window would only add load.
+//  It also absorbs the burst of sttStarts when a room turns subtitles on (one per participant).
+export const WARM_INTERVAL_MS = 5 * 60 * 1000
+
+//  One second of faint noise: enough for a recognizer to run its encoder and a few decoder
+//  steps. Whatever it "hears" is discarded.
+export function warmUpPcm(): Buffer{
+  const pcm = Buffer.alloc(SAMPLE_RATE * 2)
+  let seed = 1
+  for (let i = 0; i < SAMPLE_RATE; i += 1){
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff
+    pcm.writeInt16LE((seed % 64) - 32, i * 2)
+  }
+
+  return pcm
 }
 
 //  Switching modes restarts a service and reloads a model, so asking again a few seconds later
@@ -122,6 +142,7 @@ export class HttpSttBackend implements SttBackend{
   private cfg: SttBackendConfig
   private lock?: GpuLockReader
   private activatedAt = 0
+  private warmedAt = 0
 
   constructor(cfg: SttBackendConfig){
     this.cfg = cfg
@@ -183,6 +204,25 @@ export class HttpSttBackend implements SttBackend{
     }
 
     return false
+  }
+
+  //  Only GPU backends are warmed: they are the ones that may be in another mode (switching takes
+  //  a model load, far longer than an utterance) or freshly started. usable() is the gate, so the
+  //  rules of `#fallback` hold here too: a locked GPU is left alone, an idle one in another mode
+  //  is asked to switch (at most once per ACTIVATE_RETRY_MS) -- its recognizer warms itself up
+  //  when it starts -- and one already in our mode gets a throwaway request.
+  async warmUp(){
+    if (!this.lock){ return }
+    const now = Date.now()
+    if (now - this.warmedAt < WARM_INTERVAL_MS){ return }
+    this.warmedAt = now
+    try{
+      if (!await this.usable()){ return }
+      await this.transcribe(warmUpPcm(), 'ja')
+      sttDebug(`stt: warmed up backend '${this.name}' in ${Date.now() - now}ms`)
+    }catch(e: any){
+      sttDebug(`stt: warm-up of '${this.name}' failed: ${e?.message}`)
+    }
   }
 
   async transcribe(pcm: Buffer, lang: string): Promise<SttResult>{
@@ -248,6 +288,12 @@ export class SttBackendSelector{
   }
 
   get configured(){ return this.backends.length > 0 }
+
+  //  Warms every backend at once (each decides for itself whether it needs it and whether it may
+  //  touch its GPU). Never throws and never blocks STT: callers fire and forget.
+  async warmUp(){
+    await Promise.all(this.backends.map(b => b.warmUp?.().catch(() => {})))
+  }
 
   //  A rung's members in the order to try them. A lone backend is simply itself; a pool keeps
   //  only its free members (all checked at once, so a machine that is merely idle in another

@@ -303,8 +303,13 @@ export function sttStart(router: mediasoup.types.Router, msg: MSSttStartMessage)
   //  `bmMediasoupServer-rtsp-streaming#security`) the owner is checked here.
   if (producer.appData?.peer !== msg.peer){ return 'producer does not belong to the peer' }
 
+  //  The first session on this worker is a meeting turning subtitles on: get the GPUs ready
+  //  now, while people are still saying hello, rather than on the first real utterance
+  //  (stt-translation#warmup). Not awaited -- the session must not wait for it.
+  const firstSession = sessions.size === 0
   const session = new SttSession(msg)
   sessions.set(msg.peer, session)
+  if (firstSession){ void getSelector().warmUp() }
   session.start(router, producer).catch((e) => {
     console.error(`stt: failed to start session for ${msg.peer}:`, e)
     session.stop()
