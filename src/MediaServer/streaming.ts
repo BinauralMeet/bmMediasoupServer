@@ -37,8 +37,17 @@ class Streamer {
     this.id = msg.id
     this.infos = {fileName: msg.id}
   }
+  //  Re-sends resume + key frame to the consumers every few seconds while streaming.
+  keyFrameTimer?: NodeJS.Timeout
+  removed = false
   remove(){
-    streamers.delete(this.peer)
+    //  Without this the timer outlived the stream and kept resuming its closed consumers forever:
+    //  one more such timer per stream ever started, ~300 failing resumes a second after a month
+    //  of normal use on vrc.jp (bm workspace CHANGELOG, 2026-10-10).
+    if (this.keyFrameTimer){ clearInterval(this.keyFrameTimer); this.keyFrameTimer = undefined }
+    this.removed = true
+    //  Keyed by stream id (see streamingStart); deleting by peer id left every stream in the map.
+    if (streamers.get(this.id) === this){ streamers.delete(this.id) }
     for(const port of this.remotePorts){ releasePort(port) }
     this.consumers.forEach(c => c.close())
     this.transports.forEach(t => t.close())
@@ -69,20 +78,19 @@ export function streamingStart(router: mediasoup.types.Router, msg: MSStreamingS
   ps.forEach(producer => {
     publishProducer(streamer, router, producer).then(() => {
       count--
-      if (count === 0){
+      //  Stopped (or replaced) while its producers were still being published: start nothing.
+      if (count === 0 && !streamer.removed){
         streamer.process = getProcess(streamer.infos);
         streamer.process._observer.on('process-close', () => {
           streamer.remove()
         })
-        const interval = setInterval(()=>{
+        streamer.keyFrameTimer = setInterval(()=>{
           for (const consumer of streamer.consumers) {
-            //  request key frame every 1 second.
+            if (consumer.closed){ continue }
+            //  request key frame every 3 seconds.
             consumer.resume().then(()=>{
               consumer.requestKeyFrame()
-            })
-          }
-          if (!streamer.process){
-            clearInterval(interval)
+            }).catch(() => { /* closed in the meantime; remove() clears this timer */ })
           }
         }, 3*1000)
       }

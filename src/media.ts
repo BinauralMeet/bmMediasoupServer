@@ -3,7 +3,7 @@ import * as mediasoup from 'mediasoup'
 import debugModule from 'debug'
 import {MSCreateTransportMessage, MSMessage, MSMessageType, MSCreateTransportReply, MSRTPCapabilitiesReply,
    MSConnectTransportMessage, MSConnectTransportReply, MSProduceTransportReply, MSProduceTransportMessage,
-   MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage,
+   MSPeerMessage, MSConsumeTransportMessage, MSConsumeTransportReply, MSResumeConsumerMessage, MSCloseConsumerMessage,
    MSResumeConsumerReply, MSCloseProducerMessage, MSCloseProducerReply, MSWorkerUpdateMessage,
    MSStreamingStartMessage, MSStreamingStopMessage, MSCloseTransportMessage,
    MSServerStatusMessage,
@@ -307,7 +307,9 @@ startMediasoup().then(({worker, router}) => {
         sendMsg.kind = consumer.kind
         send(sendMsg, ws)
       }).catch((e)=>{
-        consoleError(`consume-transport: for producer ${msg.producer} failed`)
+        //  The reason matters: "producer not found" (a remote that just left or reconnected) is
+        //  routine, anything else is not.
+        consoleError(`consume-transport: for producer ${msg.producer} failed: ${e?.message ?? e}`)
         sendMsg.error = `consume for ${msg.producer} failed`
         send(sendMsg, ws)
       })
@@ -332,6 +334,18 @@ startMediasoup().then(({worker, router}) => {
     }else{
       reply.error = `consumer ${consumer} not found.`
       send(reply, ws)
+    }
+  })
+
+  //  mediasoup-client's consumer.close() only closes the client's end; without this the server's
+  //  consumer keeps forwarding that media to a client that dropped it -- and each time the client
+  //  picks the producer up again (priority changes as people move), yet another one is added.
+  //  Only the peer the consumer was created for may close it.
+  handlers.set('closeConsumer', (base) => {
+    const msg = base as MSCloseConsumerMessage
+    const consumerObject = consumers.get(msg.consumer)
+    if (consumerObject && consumerObject.appData?.peer === msg.peer){
+      closeConsumer(consumerObject)
     }
   })
 

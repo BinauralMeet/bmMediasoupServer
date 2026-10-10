@@ -8,7 +8,7 @@ export type MSMessageType =
   'createTransport' | 'closeTransport' | 'connectTransport' | 'restartIce' |
   'produceTransport' | 'closeProducer' | 'consumeTransport' | 'resumeConsumer' |
   'streamingStart' | 'streamingStop' | 'uploadFile' | 'serverStatus' |
-  'sttStart' | 'sttStop' | 'sttResult' | 'clientLog' | 'gyazoToken'
+  'sttStart' | 'sttStop' | 'sttResult' | 'clientLog' | 'gyazoToken' | 'closeConsumer'
 export interface MSMessage{
   type: MSMessageType
   sn?: number
@@ -165,6 +165,11 @@ export interface MSConsumeTransportReply extends MSPeerMessage{
 }
 
 export interface MSResumeConsumerMessage extends MSPeerMessage{
+  consumer: string
+}
+//  The client stopped receiving this consumer (dropped by priority, or the remote's track ended):
+//  close the server side too, or it keeps sending media nobody receives. No reply.
+export interface MSCloseConsumerMessage extends MSPeerMessage{
   consumer: string
 }
 export interface MSResumeConsumerReply extends MSPeerMessage{

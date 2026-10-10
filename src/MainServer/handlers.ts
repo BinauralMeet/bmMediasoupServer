@@ -393,6 +393,7 @@ export function initHandlers(){
 
   setRelayHandlers('consumeTransport')
   setRelayHandlers('resumeConsumer')
+  setRelayHandlers('closeConsumer')
   setRelayHandlers('streamingStart')
   setRelayHandlers('streamingStop')
 
