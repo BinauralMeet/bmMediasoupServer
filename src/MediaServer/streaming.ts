@@ -94,6 +94,9 @@ export function streamingStart(router: mediasoup.types.Router, msg: MSStreamingS
           }
         }, 3*1000)
       }
+    }).catch(() => {
+      //  publishProducer logged why; leave nothing half-built behind.
+      streamer.remove()
     })
   })
 }
@@ -107,6 +110,11 @@ export function streamingStop(router: mediasoup.types.Router, msg: MSStreamingSt
 export function publishProducer(streamer:Streamer, router:mediasoup.types.Router, producer:mediasoup.types.Producer){
   //console.log(`publishProducer(${producer.kind})`);
   const promise = new Promise<undefined>((resolve, reject)=>{
+    //  Each step used to fail silently -- the stream simply never started, with nothing logged.
+    const fail = (step: string) => (e: any) => {
+      console.error(`streaming: ${step} for ${producer.kind} producer ${producer.id} failed: ${e?.message ?? e}`)
+      reject(e)
+    }
     // Create the mediasoup RTP Transport used to send media to the GStreamer process
     const rtpTransportConfig = config.mediasoup.plainTransport;
 
@@ -130,10 +138,12 @@ export function publishProducer(streamer:Streamer, router:mediasoup.types.Router
 
       // Connect the mediasoup RTP transport to the ports used by GStreamer
       //console.log(`rtpTransport.connect()`)
+      //  rtcpPort only without rtcp-mux: mediasoup 3.19 rejects it otherwise ("cannot set rtcpPort
+      //  with rtcpMux enabled"), which broke every stream after the upgrade from 3.11 (2026-10-10).
       rtpTransport.connect({
         ip: '127.0.0.1',
         port: remoteRtpPort,
-        rtcpPort: remoteRtcpPort
+        ...(rtpTransportConfig.rtcpMux ? {} : {rtcpPort: remoteRtcpPort}),
       }).then(()=>{
         //console.log(`streamer.transports.push(${JSON.stringify(rtpTransport)})`)
         streamer.transports.push(rtpTransport)
@@ -172,9 +182,9 @@ export function publishProducer(streamer:Streamer, router:mediasoup.types.Router
             assert(false)
           }
           resolve(undefined)
-        })
-      })
-    })
+        }).catch(fail('consume'))
+      }).catch(fail('plainTransport.connect'))
+    }).catch(fail('createPlainTransport'))
   })
   return promise
 }
