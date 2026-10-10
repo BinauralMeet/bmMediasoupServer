@@ -50,6 +50,8 @@ const sessions = new Map<string, SttSession>()    //  key: peer id (one mic per 
 function maxSessions(){ return config.stt?.maxSessions || 8 }
 function interimMs(){ return config.stt?.interimIntervalMs || 1500 }
 function hangoverMs(){ return config.stt?.hangoverMs || 800 }
+//  How long interims stay off after one came back slower than the audio it covered.
+const INTERIM_PAUSE_MS = 15 * 1000
 
 interface Segment{
   sid: string
@@ -81,7 +83,10 @@ class SttSession{
   private busy = false
   //  Interim re-decodes are pure overhead on a backend that cannot outrun the speech: they are
   //  discarded anyway (the final overtakes them), but they eat the capacity the finals need.
-  private interimWorthTrying = true
+  //  Paused, not given up: one slow answer -- a network hiccup, the pool briefly falling back to
+  //  the CPU rung -- used to switch interims off for the rest of the session, and the speaker's
+  //  subtitles then only ever appeared once each utterance was over.
+  private interimPausedUntil = 0
   //  Only used when the speaker asked for 'auto': what language this session has settled on.
   private tally = new LanguageTally()
   private stopped = false
@@ -202,7 +207,7 @@ class SttSession{
     const segment = this.segment
     //  Skip whenever anything else is already running: a hypothesis that has to wait its turn is
     //  stale by the time it is answered, and the wait is taken from the finals.
-    if (!segment || this.busy || !this.interimWorthTrying || !getSelector().configured){ return }
+    if (!segment || this.busy || Date.now() < this.interimPausedUntil || !getSelector().configured){ return }
     this.busy = true
     const pcm = Buffer.concat(this.segmentChunks)
     const startedAt = Date.now()
@@ -212,8 +217,8 @@ class SttSession{
       //  before the final it belongs to, so stop paying for them until a faster one takes over.
       const audioMs = pcm.length / 2 / SAMPLE_RATE * 1000
       if (Date.now() - startedAt > audioMs){
-        this.interimWorthTrying = false
-        sttDebug(`stt: interim results off for ${this.peer} -- the backend is slower than speech`)
+        this.interimPausedUntil = Date.now() + INTERIM_PAUSE_MS
+        sttDebug(`stt: interim results paused for ${this.peer} -- the backend is slower than speech`)
       }
       //  Drop a result that lost the race with the segment's final: the client would otherwise
       //  see the finished text replaced by an older, partial hypothesis.

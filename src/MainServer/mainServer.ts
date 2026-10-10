@@ -100,6 +100,16 @@ export function getPeer(id: string):Peer|undefined{
 }
 
 export function deletePeer(peer: Peer){
+  //  A peer that reconnected (peerJustBefore) is replaced by a new Peer under the same id. The old
+  //  socket's close arrives seconds later as 'leave_error'; acting on it by id would tear down the
+  //  new peer -- remoteLeft to the room, peerLeft to every media, removal from `peers` -- and leave
+  //  the reconnected user stuck on "Peer not found" until they reload (seen 2026-08-26, 09-27,
+  //  10-02). The old peer was already cleaned up when it was replaced.
+  if (peers.get(peer.peer) !== peer){
+    consoleLog(`deletePeer: ${peer.peer} is a replaced connection, ignored.`)
+
+    return
+  }
   //   delete from room
   peer.room?.peers.delete(peer)
   checkDeleteRoom(peer.room)
@@ -245,6 +255,13 @@ export function addConnectListener(ws: websocket){
 
         if (msg.peerJustBefore && (justBefore = mainServer.peers.get(msg.peerJustBefore))) {
           deletePeer(justBefore)
+          //  Stop the old connection outright: its timeout timer would otherwise keep running, and
+          //  close() waits for a handshake the dead client may never answer.
+          if (justBefore.interval){
+            clearInterval(justBefore.interval)
+            justBefore.interval = undefined
+          }
+          justBefore.ws.terminate()
           consoleLog(`New connection removes ${justBefore.peer} from room ${justBefore.room?.id}` +
             `${justBefore.room ? JSON.stringify(Array.from(justBefore.room.peers.keys()).map(p=>p.peer)):'[]'}`)
           unique = makeUniqueId(justBefore.peer, mainServer.peers)
@@ -278,6 +295,10 @@ export const PEER_TIMEOUT = config.websocketTimeout
 //  reintroducing the close()-vs-terminate() peer-timeout bug (see the comment at the call site).
 export function addPeerListener(peer: Peer){
   //console.log(`addPeerListener ${peer.peer} called.`)
+  //  The browser answers WebSocket pings itself, even in a background tab whose timers Chrome
+  //  throttles to once a minute -- too slow for the client's own 'pong' to beat PEER_TIMEOUT, which
+  //  is what made returning to a backgrounded tab show an RTC connection error and reconnect.
+  peer.ws.on('pong', () => { peer.lastReceived = Date.now() })
   peer.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
     const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
     peer.lastReceived = Date.now()
@@ -300,6 +321,7 @@ export function addPeerListener(peer: Peer){
       //  own reconnect-to-main timeout -- this was the one inconsistent spot.
       peer.ws.terminate()
     }
+    if (peer.ws.readyState === peer.ws.OPEN){ peer.ws.ping() }
     //  send pong packet when no packet sent to peer for long time.
     if (now-peer.lastSent > PEER_TIMEOUT/4){
       const msg:MSMessage = {

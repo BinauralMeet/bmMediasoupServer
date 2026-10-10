@@ -39,6 +39,7 @@ export const InstantMessageType = {
   SPEECH_INTERIM: 'stt_i',                      //  SpeechInterim, provisional text, not recorded
   SPEECH_TEXT: 'stt_t',                         //  SpeechText, one finished utterance
   SPEECH_TRANSLATION: 'stt_tr',                 //  SpeechTranslation, translations of one utterance
+  SPEECH_INTERIM_TRANSLATION: 'stt_itr',        //  SpeechTranslation of interim text, not recorded
 } as const
 export type InstantMessageKeys = keyof typeof InstantMessageType
 export const InstantMessageTypes = new Set<string>(Object.values(InstantMessageType))

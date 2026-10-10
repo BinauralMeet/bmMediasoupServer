@@ -6,6 +6,9 @@ function makeMockWs() {
   const listeners = new Map<string, (ev: any) => void>()
   return {
     addEventListener: vi.fn((event: string, cb: (ev: any) => void) => { listeners.set(event, cb) }),
+    on: vi.fn((event: string, cb: (ev: any) => void) => { listeners.set(event, cb) }),
+    ping: vi.fn(),
+    send: vi.fn(),
     close: vi.fn(),
     terminate: vi.fn(),
     OPEN: 1,
@@ -72,6 +75,23 @@ describe('addPeerListener', () => {
     ws.trigger('message', {data: JSON.stringify({type: 'pong', peer: 'p1'})})
 
     expect(peer.lastReceived).toBeGreaterThan(before)
+
+    clearInterval(peer.interval)
+  })
+
+  //  A background tab's timers are throttled to once a minute, so its own 'pong' messages can
+  //  miss PEER_TIMEOUT; the browser still answers WebSocket pings, and that has to count.
+  it('pings the peer and counts the pong as a sign of life', () => {
+    const ws = makeMockWs()
+    const peer = makePeer(ws)
+    addPeerListener(peer)
+    vi.advanceTimersByTime(PEER_TIMEOUT / 4)
+    expect(ws.ping).toHaveBeenCalled()
+
+    peer.lastReceived = Date.now() - PEER_TIMEOUT - 1
+    ws.trigger('pong')
+    vi.advanceTimersByTime(PEER_TIMEOUT / 4)
+    expect(ws.terminate).not.toHaveBeenCalled()
 
     clearInterval(peer.interval)
   })

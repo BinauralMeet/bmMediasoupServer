@@ -10,7 +10,7 @@ import {MSSttResultMessage} from '../MediaServer/MediaMessages'
 import {MessageType, SpeechInterim, SpeechText, SpeechTranslation} from './DataMessageType'
 import {BMMessage} from './DataMessage'
 import {rooms, RoomStore} from './Stores'
-import {translateUtterance} from './translation'
+import {markFinal, translateInterim, translateUtterance} from './translation'
 import {consoleDebug} from '../MainServer/utils'
 
 //  Unlike instantMessageHandler(), the speaker is included: recognition happens on the server, so
@@ -37,9 +37,15 @@ export function ingestSttResult(result: MSSttResultMessage){
   if (!result.final){
     const payload: SpeechInterim = {sid: result.sid, text, lang: result.lang}
     broadcast(room, {t: MessageType.SPEECH_INTERIM, p: result.peer, v: JSON.stringify(payload)})
+    //  Only when a GPU is idle; readers in another language otherwise wait for the final.
+    translateInterim(room, result.sid, result.peer, text, result.lang, (translation) => {
+      broadcast(room, {t: MessageType.SPEECH_INTERIM_TRANSLATION, p: result.peer,
+        v: JSON.stringify(translation)})
+    })
 
     return
   }
+  markFinal(result.sid)
 
   //  The worker's timestamp for when the speech ended, not the moment recognition finished:
   //  clients use it to tell continuous speech from a pause.

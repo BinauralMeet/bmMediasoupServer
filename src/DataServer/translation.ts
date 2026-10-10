@@ -2,8 +2,9 @@
 //  because this is where the room's participants -- and therefore the set of languages anybody
 //  actually wants -- are known. Design: the bm workspace doc `stt-translation#ingest`.
 //
-//  Only final utterances are translated. Interim text is re-sent several times per second and
-//  would multiply the cost while making the subtitle flicker between rewrites.
+//  Final utterances are always translated. Interim text is translated too, but only while a GPU
+//  is idle (translateInterim below): it is re-sent about once a second, so translating every
+//  rewrite would multiply the cost, and it must never take capacity the finals need.
 import axios from 'axios'
 import {MessageType, SpeechTranslation, SttLangInfo} from './DataMessageType'
 import {RoomStore} from './Stores'
@@ -121,16 +122,22 @@ async function callOne(target: TranslationEndpoint, text: string, src: string, d
   return out
 }
 
-export async function callBackend(text: string, src: string, dsts: string[]): Promise<{[lang: string]: string}>{
+//  `idleOnly`: ask only the first rung, and only a member with nothing in flight -- the
+//  "is a GPU free right now" test interim translation runs under. Nothing is sent otherwise.
+export async function callBackend(text: string, src: string, dsts: string[], idleOnly = false):
+  Promise<{[lang: string]: string}>{
   const out: {[lang: string]: string} = {}
   let missing = dsts
   const all = endpoints()
   const now = Date.now()
-  for (const indices of groupIntoRungs(all.map(t => t.pool))){
+  const rungs = groupIntoRungs(all.map(t => t.pool))
+  for (const indices of idleOnly ? rungs.slice(0, 1) : rungs){
     const rung = indices.map(i => all[i])
+    let members = await candidates(rung, now)
+    if (idleOnly){ members = members.filter(t => stateOf(t).inFlight === 0).slice(0, 1) }
     //  The first member that answers settles the rung: its siblings run the same model, so a
     //  language it left out (low confidence, unsupported pair) would be left out by them too.
-    for (const target of await candidates(rung, now)){
+    for (const target of members){
       const st = stateOf(target)
       st.inFlight += 1
       try{
@@ -194,5 +201,78 @@ export function translateUtterance(room: RoomStore, sid: string, pid: string, te
     inFlight -= 1
     consoleDebug(`translation: failed for ${sid}: ${e?.message}`)
     if (Object.keys(texts).length){ broadcast({sid, pid, texts}) }
+  })
+}
+
+//  Interim translation. At most one request per utterance is in flight; text that arrives while
+//  it runs replaces whatever was waiting, so the next request translates the newest hypothesis.
+interface InterimJob{
+  room: RoomStore
+  pid: string
+  text: string
+  srcLang: string
+  broadcast: (payload: SpeechTranslation) => void
+}
+const interimRunning = new Map<string, InterimJob|undefined>()   //  sid -> the job waiting behind it
+let interimInFlight = 0
+//  Utterances whose final text has arrived. An interim translation that comes back after that is
+//  stale and must not reach the clients; bounded, oldest forgotten first.
+const finalized = new Set<string>()
+const FINALIZED_MAX = 2000
+
+function interimEnabled(){ return config.translation?.interim !== false }
+
+export function markFinal(sid: string){
+  finalized.add(sid)
+  if (finalized.size > FINALIZED_MAX){ finalized.delete(finalized.values().next().value as string) }
+  interimRunning.delete(sid)
+}
+
+export function translateInterim(room: RoomStore, sid: string, pid: string, text: string,
+  srcLang: string, broadcast: (payload: SpeechTranslation) => void){
+  if (!interimEnabled() || !endpoints().length || finalized.has(sid)){ return }
+  const job: InterimJob = {room, pid, text, srcLang, broadcast}
+  if (interimRunning.has(sid)){
+    interimRunning.set(sid, job)
+
+    return
+  }
+  runInterim(sid, job)
+}
+
+function runInterim(sid: string, job: InterimJob){
+  const src = normalizeLang(job.srcLang)
+  if (!src){ return }
+  const targets = collectTargetLangs(wantedLangs(job.room), src)
+  if (!targets.length){ return }
+  const texts: {[lang: string]: string} = {}
+  const missing = targets.filter((dst) => {
+    const hit = cache.get(src, dst, job.text)
+    if (hit !== undefined){ texts[dst] = hit }
+
+    return hit === undefined
+  })
+  if (!missing.length){
+    job.broadcast({sid, pid: job.pid, texts})
+
+    return
+  }
+  //  Half the slots at most, and never while finals are waiting for them.
+  if (inFlight > 0 || interimInFlight >= Math.max(1, Math.floor(maxConcurrent() / 2))){ return }
+
+  interimRunning.set(sid, undefined)
+  interimInFlight += 1
+  //  Not cached: hypotheses are rewritten every second and would push finals out of the cache.
+  callBackend(job.text, src, missing, true).then((got) => {
+    Object.assign(texts, got)
+  }).catch((e) => {
+    consoleDebug(`translation: interim failed for ${sid}: ${e?.message}`)
+  }).finally(() => {
+    interimInFlight -= 1
+    if (finalized.has(sid)){ return }
+    const next = interimRunning.get(sid)
+    interimRunning.delete(sid)
+    if (Object.keys(texts).length){ job.broadcast({sid, pid: job.pid, texts}) }
+    if (next){ runInterim(sid, next) }
   })
 }

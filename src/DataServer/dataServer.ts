@@ -308,7 +308,9 @@ function onParticipantLeft(msg: BMMessage, from: ParticipantStore, room: RoomSto
 messageHandlers.set(MessageType.PARTICIPANT_LEFT, onParticipantLeft)
 messageHandlers.set(MessageType.PARTICIPANT_LEFT_BY_ERROR, (msg, from, room) => {
   if (from && room){
-    if (room.participantsMap.has(from.id)){
+    //  Identity, not id: a participant who reconnected has a new store under the same id, and the
+    //  old socket's close must not remove it (see the replacement in processData()).
+    if (room.participantsMap.get(from.id) === from){
       const cause = JSON.parse(msg.v)
       console.warn(`Participant ${from.id} left by error.`
         + ` ${cause.errorType} code:${cause.code} reason:${cause.reason}`)
@@ -369,8 +371,13 @@ export function processData():boolean{
       participant = room.getParticipant(top.msg.p, top.ws)
       if (participant.socket !== top.ws){
         console.log(`Remove old participant with the same id '${participant.id}'.`)
+        const oldSocket = participant.socket
         room.onParticipantLeft(participant)
         participant = room.getParticipant(top.msg.p, top.ws)
+        //  Forget and drop the old socket now, so its close -- seconds later, or never, if the
+        //  client is gone -- finds nobody to remove.
+        rooms.sockMap.delete(oldSocket)
+        oldSocket.terminate()
       }
       rooms.sockMap.set(top.ws, {room, participant})
       consoleDebug(`Participant ${participant.id} joined. ${room.participants.length} people in "${room.id}".`)
@@ -392,6 +399,8 @@ export function processData():boolean{
       }else{
         console.error(`No message handler for ${top.msg.t} - ${top.msg}`)
       }
+      //  The socket is closed; without this sockMap kept every socket ever opened.
+      if (top.msg.t === MessageType.PARTICIPANT_LEFT_BY_ERROR){ rooms.sockMap.delete(top.ws) }
     }else{
       console.warn(`Could not call handler with room:"${room}" participant:"${participant}"`)
     }
@@ -437,13 +446,19 @@ export function addDataListener(ds:DataSocket){
 
   if (ds.interval) console.error(`DataSocket ${ds.ws.url} already has a interval timer.`)
   const TIMEOUT = config.websocketTimeout
+  //  Browser-answered pings keep a background tab alive (see addPeerListener in mainServer.ts).
+  ds.ws.on('pong', () => { ds.lastReceived = Date.now() })
   ds.interval = setInterval(()=>{
     if (ds.lastReceived + TIMEOUT < Date.now()){
       const pAndR = rooms.sockMap.get(ds.ws)
       console.warn(`Data websocket for ${pAndR?.participant.id} timed out.`)
-      ds.ws.close(1007, 'timeout by server') //  timeout
+      //  terminate(), not close(): close() waits up to 30s for a handshake from a client that is
+      //  already unresponsive, leaving a ghost participant visible to everyone meanwhile.
+      ds.ws.terminate()
+    }else if (ds.ws.readyState === ds.ws.OPEN){
+      ds.ws.ping()
     }
-  }, TIMEOUT/2)
+  }, TIMEOUT/4)
 
   ds.ws.addEventListener('close', (ev)=>{
     if (ds.interval){
