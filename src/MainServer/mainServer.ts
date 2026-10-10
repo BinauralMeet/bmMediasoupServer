@@ -25,12 +25,17 @@ const config = require('../../config');
 const peers = new Map<string, Peer>()
 const rooms = new Map<string, Room>()
 const workers = new Map<string, MedServer>()
+//  Which worker holds each transport. A peer's receive transports are created on the workers of
+//  the remotes it receives from, not on its own worker, so closing one needs this -- by the time
+//  it is closed the remote (and with it the routing by `remote`) may already be gone.
+const transportWorkers = new Map<string, MedServer>()
 export const handlersForPeer = new Map<MSMessageType, (base:MSMessage, peer: Peer)=>void>()
 export const handlersForWorker = new Map<MSMessageType, (base:MSMessage, worker: MedServer)=>void>()
 export const mainServer = {
   peers,
   rooms,
   workers,
+  transportWorkers,
   handlersForPeer,
   handlersForWorker,
 }
@@ -61,6 +66,16 @@ export function sendToRoom<MSM extends MSMessage>(msg: MSM, room:Room){
     }
   }
 }
+//  Sends closeTransport to the worker that actually holds the transport (see transportWorkers).
+export function closeTransportOnWorker(peer: string, transport: string){
+  const worker = transportWorkers.get(transport)
+  transportWorkers.delete(transport)
+  if (!worker){ return }
+  const msg: MSCloseTransportMessage = {type: 'closeTransport', peer, transport}
+  consoleDebug(`Send ${msg.type} for ${msg.transport} to ${worker.id}`)
+  sendMSMessage(msg, worker.ws)
+}
+
 export function sendToWorker<MSM extends MSMessage>(msg: MSM, peer: Peer){
   peer.worker?.ws.send(JSON.stringify(msg))
 }
@@ -102,17 +117,7 @@ export function deletePeer(peer: Peer){
   })
   peer.producers=[]
 
-  peer.transports.forEach(transport => {
-    const msg: MSCloseTransportMessage= {
-      type: 'closeTransport',
-      peer: peer.peer,
-      transport,
-    }
-    consoleDebug(`Send ${msg.type} for ${msg.transport}`)
-    if (peer.worker?.ws){
-      sendMSMessage(msg, peer.worker.ws)
-    }
-  })
+  peer.transports.forEach(transport => closeTransportOnWorker(peer.peer, transport))
   peer.transports=[]
 
   remoteLeft([peer.peer], peer.room!)
@@ -143,14 +148,20 @@ function remoteLeft(ps: string[], room:Room){
     remotes: ps
   }
   sendToRoom(remoteLeftMsg, room)
+  //  Every worker, not just the peer's own: a peer's receive transports live on the workers of the
+  //  remotes it receives from (relayPeerToWorker routes createTransport by `remote`), and each
+  //  worker files them under this peer. Told only its own worker, the others kept those
+  //  transports -- and their UDP/TCP ports -- until they restarted ('closetransport: ... not
+  //  found' on every leave was the visible half of this). A worker that has nothing for the peer
+  //  ignores the message.
   ps.forEach(p => {
-    const peer = peers.get(p)
-    if (peer) {
-      const peerLeftMsg:MSPeerLeftMessage = {
-        type: 'peerLeft',
-        peer: p
-      }
-      sendToWorker(peerLeftMsg, peer)
+    if (!peers.get(p)){ return }
+    const peerLeftMsg:MSPeerLeftMessage = {
+      type: 'peerLeft',
+      peer: p
+    }
+    for (const worker of workers.values()){
+      worker.ws.send(JSON.stringify(peerLeftMsg))
     }
   })
 }

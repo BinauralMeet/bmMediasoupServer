@@ -17,6 +17,10 @@ export interface MedServer extends PingPong{
 }
 export function deleteWorker(worker: MedServer){
   mainServer.workers.delete(worker.id)
+  //  Its transports went with it.
+  for (const [transport, w] of mainServer.transportWorkers){
+    if (w === worker){ mainServer.transportWorkers.delete(transport) }
+  }
 }
 export function getVacantWorker(){
   if (mainServer.workers.size){

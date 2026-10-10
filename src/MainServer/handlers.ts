@@ -8,7 +8,7 @@ import { MSCheckAdminMessage, MSCloseProducerMessage, MSCloseTransportMessage,
     MSSttResultMessage} from "../MediaServer/MediaMessages";
 import { ingestSttResult } from "../DataServer/sttIngest";
 import { findRoomLoginInfo, loginInfo } from "./mainLogin";
-import { deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWorker, mainServer, remoteUpdated, resolveMessage, sendMSMessage } from "./mainServer";
+import { closeTransportOnWorker, deletePeer, getPeer, getPeerAndWorker, handlersForPeer, handlersForWorker, mainServer, remoteUpdated, resolveMessage, sendMSMessage } from "./mainServer";
 import { Peer, toMSRemotePeer } from "./types";
 import { consoleDebug, consoleError, stamp, userLog } from "./utils";
 
@@ -62,6 +62,17 @@ export function initHandlers(){
     deletePeer(peer)
   })
   handlersForPeer.set('pong', (_base)=>{})
+
+  //  The client is done with one of its transports -- in practice the receive transport for a
+  //  remote that left, which otherwise stayed open on that remote's worker until this peer itself
+  //  left. Only the peer's own transports.
+  handlersForPeer.set('closeTransport', (base, peer)=>{
+    const msg = base as MSCloseTransportMessage
+    const idx = peer.transports.indexOf(msg.transport)
+    if (idx < 0){ return }
+    peer.transports.splice(idx, 1)
+    closeTransportOnWorker(peer.peer, msg.transport)
+  })
 
   //  What a client saw happen to its connections since its last join, plus which browser it is
   //  (binaural-meet ConnectionLog.ts). One line per join in main_user.log, next to the join
@@ -340,7 +351,10 @@ export function initHandlers(){
       }
       return
     }
-    if (msg.transport){ peer.transports.push(msg.transport) }
+    if (msg.transport){
+      peer.transports.push(msg.transport)
+      mainServer.transportWorkers.set(msg.transport, worker)
+    }
     peer.lastSent = Date.now()
     sendMSMessage(base, peer.ws)
   })
