@@ -8,7 +8,7 @@ import websocket from 'ws'
 import { MSConnectMessage } from '../MediaServer/MediaMessages'
 import { googleServer } from '../GoogleServer/GoogleServer'
 import { findRoomLoginInfo, loginInfo } from '../MainServer/mainLogin'
-import { consoleDebug } from '../MainServer/utils'
+import { consoleDebug, stamp, userLog } from '../MainServer/utils'
 
 const config = require('../../config')
 
@@ -49,6 +49,16 @@ for(const key in InstantMessageType){
 }
 for(const key in ParticipantMessageType){
   messageHandlers.set(ParticipantMessageType[key as ParticipantMessageKeys], participantMessageHandler)
+}
+//  Another participant making someone's browser reload (an admin action) or kicking them: both
+//  end that person's session in a way their own logs show only as "unload", so the request itself
+//  goes to main_user.log -- next to the joins/leaves and clientLog lines it explains.
+for(const type of [MessageType.RELOAD_BROWSER, MessageType.KICK]){
+  messageHandlers.set(type, (msg, from, room) => {
+    userLog.log(`${stamp()}: ${type} from ${from.id} to ${msg.d || 'everyone'} in room '${room.id}'` +
+      (type === MessageType.KICK && msg.v ? ` reason:${`${msg.v}`.slice(0, 200)}` : ''))
+    instantMessageHandler(msg, from, room)
+  })
 }
 
 messageHandlers.set(MessageType.PARTICIPANT_POSE, (msg, from, room) => {
