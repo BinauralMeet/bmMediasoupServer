@@ -13,11 +13,11 @@ import {addPositionListener} from './PositionServer/positionServer'
 import {restApp} from './rest'
 import {findRoomLoginInfo, startObserveConfigOnGoogleDrive} from './MainServer/mainLogin'
 import {consoleDebug, consoleError, consoleLog} from './MainServer/utils'
+import {kickMessageLoop, setMessageProcessor} from './messageLoop'
 
 const err = debugModule('bmMsM:ERROR');
 const config = require('../config');
 
-export let messageLoad = 0
 
 
 //--------------------------------------------------
@@ -99,22 +99,9 @@ function main() {
       server.listen(config.httpPort, config.httpIp, () => {
         consoleLog(`server is running and listening on ` +
                     `${useHttp ? 'http' : 'https'}://${config.httpIp}:${config.httpPort}`);
-        //  Start process to handle queued messages
-        const INTERVAL = 100
-        setInterval(()=>{
-          const start = Date.now()
-          let now = start
-          while(now - start < INTERVAL/2){
-            let processed = processData()
-            processed ||= processWorker()
-            if (!processed) processed = processPeer()
-            if (!processed) break
-            now = Date.now()
-          }
-          messageLoad = (now - start) / INTERVAL
-          //utilization = performance.eventLoopUtilization(utilization)
-          //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
-        }, INTERVAL)
+        //  Handle queued messages as they arrive (messageLoop.ts): data first, then workers, then peers.
+        setMessageProcessor(() => processData() || processWorker() || processPeer())
+        kickMessageLoop()
 
         if (config.googleOAuth2Config){
           startObserveConfigOnGoogleDrive()   //  Load and observe auth related config file on google drive

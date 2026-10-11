@@ -405,16 +405,7 @@ startMediasoup().then(({worker, router}) => {
           peer:`${name}_${worker.pid}`
       }
       consoleDebug(`send ${JSON.stringify(msg)}`)
-      function tryToSend(){
-        if (ws.readyState === ws.CONNECTING){
-          setTimeout(tryToSend, 100)
-        }else if (ws.readyState === ws.OPEN){
-          send(msg, ws)
-        }else{
-          ws.close(3333, `Wrong status: ${ws.readyState}.`)
-        }
-      }
-      tryToSend()
+      send(msg, ws)   //  the socket is OPEN inside onopen
     }
     ws.onmessage = (ev)=>{
       const text = ev.data.toString()

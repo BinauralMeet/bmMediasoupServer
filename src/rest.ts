@@ -1,7 +1,7 @@
 import express from 'express';
 import {dataServer} from './DataServer/Stores'
 import {mainServer, sendMSMessage, sendWithPromise} from './MainServer/mainServer'
-import {messageLoad} from './main';
+import {takeMessageLoad} from './messageLoop';
 import {performance} from 'perf_hooks'
 import { MSServerStatusMessage, MSMessage, MSServerStatusStream } from './MediaServer/MediaMessages';
 import { MedServer } from './MainServer/types';
@@ -62,7 +62,7 @@ restApp.get('/load', function(req, res) {
   //console.log(`get /load  req:${req.path}`)
   const utilization = performance.eventLoopUtilization()
   //console.log(`Process load: ${messageLoad.toPrecision(2)} utilization: ${JSON.stringify(utilization)}`)
-  const rv = {...utilization, messageLoad}
+  const rv = {...utilization, messageLoad: takeMessageLoad()}
   res.json(rv)
 })
 

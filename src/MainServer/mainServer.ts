@@ -7,6 +7,7 @@ import {findRoomLoginInfo, loginInfo} from './mainLogin';
 import {Peer, MedServer, Room, PingPong, deleteWorker, getVacantWorker, toMSRemotePeer} from './types';
 import {CONSOLE_DEBUG, consoleDebug, consoleError, consoleLog } from './utils';
 import {initHandlers} from './handlers';
+import {kickMessageLoop} from '../messageLoop'
 
 const config = require('../../config');
 
@@ -304,6 +305,7 @@ export function addPeerListener(peer: Peer){
     peer.lastReceived = Date.now()
     consoleDebug(`Msg ${msg.type} from ${msg.peer}`)
     peerQueue.push({msg, peer})
+    kickMessageLoop()
   })
   if (peer.interval) console.error(`addPeerListner for peer ${peer.peer} called again.`)
     peer.interval = setInterval(()=>{
@@ -343,6 +345,7 @@ export function addPeerListener(peer: Peer){
     }
     Object.assign(mp.msg, {code: ev.code, reason: ev.reason})
     peerQueue.push(mp)
+    kickMessageLoop()
   })
 }
 
@@ -381,6 +384,7 @@ export function addWorkerListener(worker: MedServer){
   worker.ws.addEventListener('message', (messageData: websocket.MessageEvent)=>{
     const msg = JSON.parse(messageData.data.toString()) as MSPeerMessage
     workerQueue.push({msg, worker})
+    kickMessageLoop()
   })
 }
 

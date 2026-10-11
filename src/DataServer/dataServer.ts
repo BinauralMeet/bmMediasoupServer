@@ -9,6 +9,7 @@ import { MSConnectMessage } from '../MediaServer/MediaMessages'
 import { googleServer } from '../GoogleServer/GoogleServer'
 import { findRoomLoginInfo, loginInfo } from '../MainServer/mainLogin'
 import { consoleDebug, stamp, userLog } from '../MainServer/utils'
+import {kickMessageLoop} from '../messageLoop'
 
 const config = require('../../config')
 
@@ -441,6 +442,7 @@ export function addDataListener(ds:DataSocket){
     const msgs = JSON.parse(ev.data.toString()) as Message[]
     if (msgs.length){
       dataQueue.push(...msgs.map(msg => ({msg, ws:ds.ws})))
+      kickMessageLoop()
     }
   })
 
@@ -478,5 +480,6 @@ export function addDataListener(ds:DataSocket){
       ws:ds.ws
     }
     dataQueue.push(dAndWs)
+    kickMessageLoop()
   })
 }
