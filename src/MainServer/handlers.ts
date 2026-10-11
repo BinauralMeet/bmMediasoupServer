@@ -309,11 +309,20 @@ export function initHandlers(){
   //  bridging(peer->worker / worker->peer) handlers
   function relayPeerToWorker(base: MSMessage){
     const msg = base as MSPeerMessage
-    const remoteOrPeer = getPeerAndWorker(msg.remote? msg.remote : msg.peer)
-    if (remoteOrPeer?.worker){
-      consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${remoteOrPeer.worker.id}`)
+    //  A request about an existing transport goes to the worker that holds it. Guessing from the
+    //  peer instead sent restartIce for a receive transport -- which lives on the *remote's*
+    //  worker, and the client does not say which remote -- to the requester's own worker, where it
+    //  always failed and left that remote silent.
+    const transport = (msg as any).transport as string|undefined
+    const holder = transport ? mainServer.transportWorkers.get(transport) : undefined
+    const worker = holder ?? getPeerAndWorker(msg.remote? msg.remote : msg.peer)?.worker
+    if (worker){
+      consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${worker.id}`)
       const {remote, ...msg_} = msg
-      sendMSMessage(msg_, remoteOrPeer.worker.ws)
+      sendMSMessage(msg_, worker.ws)
+    }else{
+      //  Not answered: the client gives up on its own (RtcConnection's reply timeout).
+      console.warn(`P=>W ${msg.type} from ${msg.peer} dropped: no worker for ${msg.remote ?? msg.peer}.`)
     }
   }
   function relayWorkerToPeer(base: MSMessage){
