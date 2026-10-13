@@ -237,6 +237,34 @@ describe('HttpSttBackend GPU handling', () => {
     }finally{ api.close() }
   })
 
+  //  Found live (2026-10-13): the gateway sent a rejected key to its login page with a 302, the
+  //  followed redirect answered 200 with HTML, and that read as "idle" -- so every utterance went
+  //  to the CPU while the logs claimed the GPU had been asked to switch.
+  it('treats a gateway redirect as an unreadable GPU, not an idle one', async () => {
+    const calls: string[] = []
+    const server = http.createServer((req, res) => {
+      calls.push(`${req.method} ${req.url}`)
+      if (req.url === '/login'){
+        res.writeHead(200, {'content-type': 'text/html'})
+        res.end('<!doctype html><title>login</title>')
+      }else{
+        res.writeHead(302, {location: '/login'})
+        res.end()
+      }
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as any).port
+    try{
+      const backend = new HttpSttBackend({kind: 'gpu', endpoint: `http://127.0.0.1:${port}/asr`,
+        gpuStatus: `http://127.0.0.1:${port}`, gpuMode: 'conversation'})
+      expect(await backend.usable()).toBe(false)
+      expect(calls.some(c => c.startsWith('POST /activate'))).toBe(false)
+      //  Posting audio there is a failure, not an empty recognition.
+      await expect(backend.transcribe(Buffer.alloc(320 * 2), 'ja')).rejects.toThrow()
+      expect(calls).not.toContain('GET /login')
+    }finally{ server.close() }
+  })
+
   it('ignores the GPU API entirely when no gpuStatus is configured', async () => {
     const backend = new HttpSttBackend({kind: 'cpu', endpoint: 'http://127.0.0.1:1/asr'})
     expect(await backend.usable()).toBe(true)

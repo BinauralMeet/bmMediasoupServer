@@ -143,6 +143,7 @@ export class HttpSttBackend implements SttBackend{
   private lock?: GpuLockReader
   private activatedAt = 0
   private warmedAt = 0
+  private unreadableLoggedAt = 0
 
   constructor(cfg: SttBackendConfig){
     this.cfg = cfg
@@ -180,13 +181,22 @@ export class HttpSttBackend implements SttBackend{
     let active: string[] = []
     try{
       const res = await axios.get(`${this.cfg.gpuStatus}/status`,
-        {timeout: GPU_API_TIMEOUT_MS, headers: this.headers})
-      active = Array.isArray(res.data?.active_modes) ? res.data.active_modes : []
-    }catch(e){
+        {timeout: GPU_API_TIMEOUT_MS, headers: this.headers, maxRedirects: 0})
+      //  Anything without the list is not the switch API answering: the gateway in front of it
+      //  sends a rejected key to its login page, whose 200 used to read as "idle" here, so a
+      //  broken gateway looked like a GPU that would not switch.
+      if (!Array.isArray(res.data?.active_modes)){ throw new Error('no active_modes in the answer') }
+      active = res.data.active_modes
+    }catch(e: any){
       //  Unlike the lock check, an unanswered status is a reason to skip: this backend only
       //  exists while its mode runs, and finding out by posting audio costs a whole timeout
       //  out of an utterance's budget, every utterance.
-      sttDebug(`stt: ${this.name} skipped, cannot read the GPU's mode`)
+      //  A plain log (at most once per ACTIVATE_RETRY_MS): every utterance quietly going to the
+      //  CPU is what the meeting sees, and only this line says why.
+      if (now - this.unreadableLoggedAt >= ACTIVATE_RETRY_MS){
+        this.unreadableLoggedAt = now
+        sttLog(`stt: ${this.name} skipped, cannot read the GPU's mode: ${e?.message}`)
+      }
 
       return false
     }
@@ -195,7 +205,7 @@ export class HttpSttBackend implements SttBackend{
     this.activatedAt = now
     try{
       await axios.post(`${this.cfg.gpuStatus}/activate/${this.cfg.gpuMode}`, undefined,
-        {timeout: 5000, headers: this.headers})
+        {timeout: 5000, headers: this.headers, maxRedirects: 0})
       //  Worth a plain log, not a debug one: this stops whatever else was using that GPU.
       sttLog(`stt: asked the GPU to switch to '${this.cfg.gpuMode}' ` +
         `(was ${active.length ? active.join(',') : 'idle'}) for backend '${this.name}'`)
@@ -247,6 +257,9 @@ export class HttpSttBackend implements SttBackend{
       timeout: this.cfg.timeoutMs || 3000,
       headers,
       maxBodyLength: Infinity,
+      //  A redirect is the gateway refusing us; followed, it is a 200 page with no text, which
+      //  would count as an empty but successful recognition.
+      maxRedirects: 0,
     })
     const text = stripEventTags(typeof res.data?.text === 'string' ? res.data.text : '')
     //  With no hint, what the recognizer detected is the only source of the language, and

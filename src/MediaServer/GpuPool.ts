@@ -87,7 +87,7 @@ export class GpuLockReader{
   private async read(){
     try{
       const res = await axios.get(`${this.statusUrl}/lock/status`,
-        {timeout: GPU_API_TIMEOUT_MS, headers: this.headers()})
+        {timeout: GPU_API_TIMEOUT_MS, headers: this.headers(), maxRedirects: 0})
       this.lockedCached = !!res.data?.locked
     }catch(e){
       this.lockedCached = false
