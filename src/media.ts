@@ -47,7 +47,6 @@ const fqdn = os.hostname()
 const hostinfo={
   fqdn,
   name:fqdn.substring(0, fqdn.indexOf('.')),
-  ip:getIpAddress()
 }
 
 // start mediasoup
@@ -79,14 +78,26 @@ startMediasoup().then(({worker, router}) => {
 
   handlers.set('createTransport',(base, ws)=>{
     const msg = base as MSCreateTransportMessage
-    const {
-      listenIps,
-      initialAvailableOutgoingBitrate
-    } = config.mediasoup.webRtcTransport
+    const {initialAvailableOutgoingBitrate} = config.mediasoup.webRtcTransport
+    //  Looked up per transport, not once at start: pm2 starts this right after boot, sometimes
+    //  before the interface has its address, and the 127.0.0.1 it then settled on for good made
+    //  every send transport on this server fail ICE until a restart (found 2026-10-16).
+    let listenIps = config.mediasoup.webRtcTransport.listenIps
     if (listenIps.length === 0){
-      let ip = hostinfo.ip
-      if (!ip) ip = '127.0.0.1'
-      listenIps.push({ ip, announcedIp: null })
+      const ip = getIpAddress()
+      listenIps = ip ? [{ip, announcedIp: null}] : []
+    }
+    if (listenIps.length === 0){
+      consoleError(`createTransport for peer ${msg.peer}: this host has no IPv4 address yet`)
+      const errMsg: MSCreateTransportReply = {
+        type: 'createTransport',
+        peer: msg.peer,
+        sn: msg.sn,
+        dir: msg.dir,
+        error: 'media server has no network address',
+      }
+      send(errMsg, ws)
+      return
     }
 
     router.createWebRtcTransport({
