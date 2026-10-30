@@ -48,6 +48,9 @@ const hostinfo={
   fqdn,
   name:fqdn.substring(0, fqdn.indexOf('.')),
 }
+//  TURN server handed to clients with each transport. coturn normally runs on this host; a media
+//  server without coturn names the host that has one in config.js (turnHost).
+const turnHost:string = config.turnHost || fqdn
 
 // start mediasoup
 consoleLog('starting mediasoup')
@@ -119,12 +122,12 @@ startMediasoup().then(({worker, router}) => {
         dir: msg.dir,
         iceServers: [
           {
-            urls: `turn:${hostinfo.fqdn}`,
+            urls: `turn:${turnHost}`,
             username: 'binauralmeet',
             credential: 'binauralmeet_mediasoup_server',
           },
           {
-            urls: `turns:${hostinfo.fqdn}:443`,
+            urls: `turns:${turnHost}:443`,
             username: 'binauralmeet',
             credential: 'binauralmeet_mediasoup_server',
           },
