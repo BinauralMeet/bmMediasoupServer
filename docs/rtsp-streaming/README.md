@@ -42,8 +42,10 @@ ffmpeg経由でpushする**だけの機能。現在の唯一の利用者は`vrcs
 ## 既知の制限 {#limits}
 
 - **映像コーデックはH264でなければ`-c:v copy`(無変換)が失敗/不正なRTSPに
-  なる**(`ffmpeg.ts`の`_videoArgs`)。VP8で送られたProducerを指定すると
-  正しく配信されない可能性が高い。`vrcss`側はこれを踏まえ、画面共有の
+  なる**(`ffmpeg.ts`の`_videoArgs`)。VP8などH264以外で送られたProducerを指定すると、
+  `publishProducer`が`streaming: consume ... failed: video codec ... is not supported`
+  と出してその配信を諦める(mediasoupは変換しないので、consumeしても
+  `no compatible media codecs`で失敗するだけ)。`vrcss`側はこれを踏まえ、画面共有の
   Producer作成時に明示的にH264(`profile-level-id=4d001f`)を指定している。
 - 音声は`aac`へ変換される(`_audioArgs`、mediasoup側はopusなので必ず変換が
   入る)。

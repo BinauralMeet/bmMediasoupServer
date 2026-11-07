@@ -156,6 +156,14 @@ export function publishProducer(streamer:Streamer, router:mediasoup.types.Router
           codec => codec.kind === producer.kind && (producer.kind!=='video' || codec.mimeType==='video/H264')
         )
         if (routerCodec) codecs.push(routerCodec)
+        //  The relay copies video without transcoding and only H264 works (docs: rtsp-streaming#limits).
+        //  mediasoup cannot convert, so a VP8/VP9 producer would only fail with "no compatible media
+        //  codecs"; say why instead and give up on this stream.
+        const producerMime = producer.rtpParameters.codecs[0]?.mimeType
+        if (producer.kind === 'video' && producerMime?.toLowerCase() !== 'video/h264'){
+          fail('consume')(new Error(`video codec ${producerMime} is not supported for streaming (H264 only)`))
+          return
+        }
 
         const rtpCapabilities:RtpCapabilities = {
           codecs,

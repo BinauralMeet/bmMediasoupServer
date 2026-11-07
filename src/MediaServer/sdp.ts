@@ -18,27 +18,32 @@ a=sendonly
 }
 
 // File to create SDP text from mediasoup RTP Parameters
+//  Built line by line: the template literal this replaced appended `audio && ...`, which put
+//  "undefined" right after the video's "a=sendonly" whenever there was no audio.
 export function createSdpText(rtpParameters: RtpInfos){
   const { video, audio } = rtpParameters;
 
   // Video codec info
   const videoCodecInfo = getCodecInfoFromRtpParameters('video', video!.rtpParameters)
+  const lines = [
+    'v=0',
+    'o=- 0 0 IN IP4 127.0.0.1',
+    's=FFmpeg',
+    'c=IN IP4 127.0.0.1',
+    't=0 0',
+    `m=video ${video!.remoteRtpPort} RTP/AVP ${videoCodecInfo.payloadType}`,
+    `a=rtpmap:${videoCodecInfo.payloadType} ${videoCodecInfo.codecName}/${videoCodecInfo.clockRate}`,
+    'a=sendonly',
+  ]
 
-  // Audio codec info
-  const audioCodecInfo = audio ? getCodecInfoFromRtpParameters('audio', audio!.rtpParameters): undefined;
+  if (audio){
+    const audioCodecInfo = getCodecInfoFromRtpParameters('audio', audio.rtpParameters)
+    lines.push(
+      `m=audio ${audio.remoteRtpPort} RTP/AVP ${audioCodecInfo.payloadType}`,
+      `a=rtpmap:${audioCodecInfo.payloadType} ${audioCodecInfo.codecName}/${audioCodecInfo.clockRate}/${audioCodecInfo.channels}`,
+      'a=sendonly',
+    )
+  }
 
-  return `v=0
-  o=- 0 0 IN IP4 127.0.0.1
-  s=FFmpeg
-  c=IN IP4 127.0.0.1
-  t=0 0
-  m=video ${video!.remoteRtpPort} RTP/AVP ${videoCodecInfo.payloadType}
-  a=rtpmap:${videoCodecInfo.payloadType} ${videoCodecInfo.codecName}/${videoCodecInfo.clockRate}
-  a=sendonly` +
-
-    (audio && `
-m=audio ${audio.remoteRtpPort} RTP/AVP ${audioCodecInfo!.payloadType}
-  a=rtpmap:${audioCodecInfo!.payloadType} ${audioCodecInfo!.codecName}/${audioCodecInfo!.clockRate}/${audioCodecInfo!.channels}
-  a=sendonly
-  `);
+  return lines.join('\n') + '\n'
 };
