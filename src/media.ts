@@ -20,6 +20,7 @@ import {streamingStart, streamingStop} from './MediaServer/streaming'
 import {sttStart, sttStop, sttStopByPeer, setSttResultSender} from './MediaServer/stt'
 import { debuglog } from 'util'
 import {Peers} from './MediaServer/Peers'
+import {MainLink} from './MediaServer/mainLink'
 
 const log = debugModule('bmMsE');
 const warn = debugModule('bmMsE:WARN');
@@ -35,7 +36,6 @@ const consoleError = console.error
 let ws : websocket.WebSocket
 let workerId = ''
 let workerLoad = 0
-let lastPingTimestamp = 0
 
 const transports = new Map<string, mediasoup.types.WebRtcTransport>()
 const peers = new Peers()
@@ -408,10 +408,12 @@ startMediasoup().then(({worker, router}) => {
   })
 
   //  function defines which use worker etc.
+  //  Each socket's handlers use that socket, not the shared `ws`, which may already be a newer one.
   function connectToMain(){
     clearMediasoup()
-    ws = new websocket.WebSocket(config.mainServer)
-    ws.onopen = (ev) => {
+    const sock = new websocket.WebSocket(config.mainServer)
+    ws = sock
+    sock.onopen = (ev) => {
       let name = hostinfo.name
       if (!name) name = 'localhost'
       const msg:MSPeerMessage = {
@@ -419,42 +421,32 @@ startMediasoup().then(({worker, router}) => {
           peer:`${name}_${worker.pid}`
       }
       consoleDebug(`send ${JSON.stringify(msg)}`)
-      send(msg, ws)   //  the socket is OPEN inside onopen
+      send(msg, sock)   //  the socket is OPEN inside onopen
     }
-    ws.onmessage = (ev)=>{
+    sock.onmessage = (ev)=>{
       const text = ev.data.toString()
       //  consoleLog(text)
       const base = JSON.parse(text) as MSMessage
       consoleDebug(`${base.type} received from ${(base as any).peer}.`)
       const handler = handlers.get(base.type)
       if (handler){
-          handler(base, ws)
+          handler(base, sock)
       }
     }
-    ws.onerror = (ev)=>{
-      consoleLog(`ws error ${ev.message}, state:${ws.readyState}`)
+    sock.onerror = (ev)=>{
+      consoleLog(`ws error ${ev.message}, state:${sock.readyState}`)
     }
-    ws.on('ping', ()=>{
+    sock.on('ping', ()=>{
       debuglog('ping received.')
-      ws.pong()
-      lastPingTimestamp = Date.now()
+      sock.pong()
     })
+    return sock
   }
 
-  lastPingTimestamp = Date.now()
   consoleLog('connecting to main server')
   const TIMEOUT = config.workerWebsocketTimeout
-  setInterval(()=>{
-    if (ws && ws.readyState && ws.readyState === ws.OPEN){
-      if (lastPingTimestamp + TIMEOUT < Date.now()){
-        consoleLog('Ping timeout. Terminate websocket.')
-        ws.terminate()
-      }
-    }else{
-      consoleLog('Try to connect to main server.')
-      connectToMain()
-    }
-  }, TIMEOUT/2)
+  const mainLink = new MainLink(connectToMain, TIMEOUT, consoleLog)
+  setInterval(()=>{ mainLink.check() }, TIMEOUT/2)
 })
 
 
