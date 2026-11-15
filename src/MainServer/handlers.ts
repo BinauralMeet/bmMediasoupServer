@@ -315,7 +315,10 @@ export function initHandlers(){
     //  always failed and left that remote silent.
     const transport = (msg as any).transport as string|undefined
     const holder = transport ? mainServer.transportWorkers.get(transport) : undefined
-    const worker = holder ?? getPeerAndWorker(msg.remote? msg.remote : msg.peer)?.worker
+    //  A remote that just left is routine (others still close their consumers of it): only the
+    //  warning below, not also getPeerAndWorker's error.
+    const target = msg.remote || msg.peer
+    const worker = holder ?? (mainServer.peers.has(target) ? getPeerAndWorker(target)?.worker : undefined)
     if (worker){
       consoleDebug(`P=>W ${msg.type} from ${msg.peer} relayed to ${worker.id}`)
       const {remote, ...msg_} = msg

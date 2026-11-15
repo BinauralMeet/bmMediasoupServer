@@ -237,7 +237,7 @@ startMediasoup().then(({worker, router}) => {
     }
   })
 
-  handlers.set('produceTransport', (base) => {
+  handlers.set('produceTransport', (base, ws) => {
     const msg = base as MSProduceTransportMessage
     const {rtpParameters, paused, ...msg_} = msg
     const sendMsg:MSProduceTransportReply = msg_
@@ -274,7 +274,7 @@ startMediasoup().then(({worker, router}) => {
       })
     }
   })
-  handlers.set('closeProducer', (base) => {
+  handlers.set('closeProducer', (base, ws) => {
     const msg = base as MSCloseProducerMessage
     const producerObject = producers.get(msg.producer)
     const {producer, ...msg_} = msg
@@ -291,7 +291,7 @@ startMediasoup().then(({worker, router}) => {
     send(reply, ws)
   })
 
-  handlers.set('consumeTransport', (base) => {
+  handlers.set('consumeTransport', (base, ws) => {
     const msg = base as MSConsumeTransportMessage
     const {rtpCapabilities, ...msg_} = msg
     const sendMsg:MSConsumeTransportReply = {...msg_}
@@ -322,15 +322,17 @@ startMediasoup().then(({worker, router}) => {
         send(sendMsg, ws)
       }).catch((e)=>{
         //  The reason matters: "producer not found" (a remote that just left or reconnected) is
-        //  routine, anything else is not.
-        consoleError(`consume-transport: for producer ${msg.producer} failed: ${e?.message ?? e}`)
+        //  routine, anything else is not. The routine case goes out as a warning (still counted).
+        const routine = !producers.has(msg.producer)
+        const report = routine ? console.warn : consoleError
+        report(`consume-transport: for producer ${msg.producer} failed: ${e?.message ?? e}`)
         sendMsg.error = `consume for ${msg.producer} failed`
         send(sendMsg, ws)
       })
     }
   })
 
-  handlers.set('resumeConsumer', (base) => {
+  handlers.set('resumeConsumer', (base, ws) => {
     const msg = base as MSResumeConsumerMessage
     const consumerObject = consumers.get(msg.consumer)
     const {consumer, ...msg_} = msg
