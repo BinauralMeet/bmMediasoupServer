@@ -75,6 +75,10 @@ export class FFmpeg {
       //'-loglevel',
       //'debug',
       '-protocol_whitelist','pipe,udp,rtp,rtmp,rtsp',
+      //  Kernel receive buffer for the RTP socket. ffmpeg's default (~384KB) overflows on the burst
+      //  of a screen-share key frame arriving over loopback, so the key frame is lost and the RTSP
+      //  viewers (VRChat) see a black or smeared picture. Needs net.core.rmem_max >= this.
+      '-buffer_size', '8388608',
       '-fflags',
       '+genpts',
       '-f',
