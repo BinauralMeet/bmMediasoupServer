@@ -12,7 +12,7 @@
 //  `GET <gpuStatus>/lock/status` returns `{"locked": bool}`; we only ever read it.
 import axios from 'axios'
 import {guessLang} from './SttLanguage'
-import {GpuLockReader, GPU_API_TIMEOUT_MS, groupIntoRungs, orderPool} from './GpuPool'
+import {GpuLockReader, GPU_API_TIMEOUT_MS, freeMembers, groupIntoRungs, orderPool} from './GpuPool'
 
 //  Local, like media.ts's own helpers: MainServer/utils.ts opens a log file at import time,
 //  which has no business happening in the media worker process.
@@ -29,6 +29,7 @@ export interface SttBackendConfig{
   endpoint: string            //  POST target for transcription
   gpuStatus?: string          //  base URL of the GPU's switch/lock API, when it shares a GPU
   gpuMode?: string            //  the mode that runs this recognizer; switched into when idle
+  gpuWake?: string            //  URL that wakes the GPU's machine (default: gpuWakeUrl(gpuStatus); '' = never)
   upload?: 'raw' | 'multipart'//  how the audio is sent (default: raw body)
   langParam?: string          //  query parameter carrying the language hint (default: 'lang')
   langAuto?: string           //  what to send for "detect it"; omitted from the request if unset
@@ -104,6 +105,25 @@ export function breakerOnFailure(state: BreakerState, now: number,
   return {failures, openUntil: failures >= cfg.failuresToOpen ? now + cfg.openMs : state.openUntil}
 }
 
+//  Where to wake the machine behind a `gpuStatus` that does not answer: the gateway in front of
+//  the GPUs serves `GET <base>/GPUWAKE/<name>` for `<base>/<name>`, sends the machine a magic
+//  packet and answers at once (without `?wait`). A machine that never sleeps answers 404, which
+//  costs one request per ACTIVATE_RETRY_MS. Undefined when the URL has no name to use.
+export function gpuWakeUrl(gpuStatus: string): string|undefined{
+  try{
+    const url = new URL(gpuStatus)
+    const parts = url.pathname.split('/').filter(p => p)
+    const name = parts.pop()
+    if (!name){ return undefined }
+    url.pathname = `/${[...parts, 'GPUWAKE', name].join('/')}`
+    url.search = ''
+
+    return url.toString()
+  }catch(e){
+    return undefined
+  }
+}
+
 //  ---------------------------------------------------------------- backends
 
 export interface SttBackend{
@@ -136,6 +156,10 @@ export function warmUpPcm(): Buffer{
 //  Switching modes restarts a service and reloads a model, so asking again a few seconds later
 //  achieves nothing but noise. One attempt, then leave the GPU alone for a while.
 const ACTIVATE_RETRY_MS = 3 * 60 * 1000
+//  A GPU whose status did not answer is not asked again for this long; meanwhile usable() says
+//  no at once. Asking every utterance cost each one a timeout (found live 2026-11-13). Long
+//  enough to cover a wake (10-20s), short enough to pick the machine up soon after.
+export const STATUS_UNREADABLE_CACHE_MS = 30 * 1000
 
 export class HttpSttBackend implements SttBackend{
   readonly name: string
@@ -144,11 +168,17 @@ export class HttpSttBackend implements SttBackend{
   private activatedAt = 0
   private warmedAt = 0
   private unreadableLoggedAt = 0
+  private unreadableUntil = 0
+  private wokenAt = 0
+  private wakeUrl?: string
 
   constructor(cfg: SttBackendConfig){
     this.cfg = cfg
     this.name = cfg.name || cfg.kind
-    if (cfg.gpuStatus){ this.lock = new GpuLockReader(cfg.gpuStatus, () => this.headers) }
+    if (cfg.gpuStatus){
+      this.lock = new GpuLockReader(cfg.gpuStatus, () => this.headers)
+      this.wakeUrl = cfg.gpuWake ?? gpuWakeUrl(cfg.gpuStatus)
+    }
   }
 
   private get headers(){
@@ -164,6 +194,11 @@ export class HttpSttBackend implements SttBackend{
   async usable(){
     if (!this.lock){ return true }
     const now = Date.now()
+    if (now < this.unreadableUntil){
+      sttDebug(`stt: ${this.name} skipped, its GPU did not answer a moment ago`)
+
+      return false
+    }
     if (await this.lock.locked(now)){
       sttDebug(`stt: ${this.name} skipped, GPU locked by someone else`)
 
@@ -197,6 +232,9 @@ export class HttpSttBackend implements SttBackend{
         this.unreadableLoggedAt = now
         sttLog(`stt: ${this.name} skipped, cannot read the GPU's mode: ${e?.message}`)
       }
+      this.unreadableUntil = Date.now() + STATUS_UNREADABLE_CACHE_MS
+      //  Most often the machine is asleep (it sleeps when idle); nobody but us wakes it.
+      this.wake(now)
 
       return false
     }
@@ -214,6 +252,18 @@ export class HttpSttBackend implements SttBackend{
     }
 
     return false
+  }
+
+  //  Fire and forget, at most once per ACTIVATE_RETRY_MS: waking takes 10-20s, far longer than an
+  //  utterance can wait, so the utterance goes elsewhere and the machine is used once its status
+  //  answers again.
+  private wake(now: number){
+    if (!this.wakeUrl || now - this.wokenAt < ACTIVATE_RETRY_MS){ return }
+    this.wokenAt = now
+    axios.get(this.wakeUrl, {timeout: GPU_API_TIMEOUT_MS, headers: this.headers, maxRedirects: 0})
+      .then(res => sttLog(`stt: asked to wake the GPU of backend '${this.name}': ` +
+        `${JSON.stringify(res.data)}`))
+      .catch((e: any) => sttLog(`stt: could not wake the GPU of backend '${this.name}': ${e?.message}`))
   }
 
   //  Only GPU backends are warmed: they are the ones that may be in another mode (switching takes
@@ -311,11 +361,11 @@ export class SttBackendSelector{
   //  A rung's members in the order to try them. A lone backend is simply itself; a pool keeps
   //  only its free members (all checked at once, so a machine that is merely idle in another
   //  mode gets asked to switch even while its sibling answers) and puts the least busy first.
+  //  A member slow to answer its check is not waited for once another one is free (freeMembers).
   private async candidates(rung: number[], now: number): Promise<number[]>{
     const open = rung.filter(i => !breakerShouldSkip(this.states[i], now))
     if (rung.length === 1){ return open }
-    const usable = await Promise.all(open.map(i => this.backends[i].usable().catch(() => false)))
-    const free = open.filter((_, k) => usable[k])
+    const free = await freeMembers(open, open.map(i => this.backends[i].usable()))
     this.rotation += 1
 
     return orderPool(free, this.inFlight, this.rotation)

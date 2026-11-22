@@ -1,6 +1,6 @@
 import {describe, it, expect} from 'vitest'
 import http from 'http'
-import {groupIntoRungs, orderPool, GpuLockReader} from '../GpuPool'
+import {groupIntoRungs, orderPool, GpuLockReader, freeMembers} from '../GpuPool'
 
 describe('groupIntoRungs', () => {
   it('keeps unpooled entries as rungs of their own, in order', () => {
@@ -50,5 +50,27 @@ describe('GpuLockReader', () => {
   it('counts an unreachable status endpoint as unlocked', async () => {
     const reader = new GpuLockReader('http://127.0.0.1:1', () => ({}))
     expect(await reader.locked()).toBe(false)
+  })
+})
+
+describe('freeMembers', () => {
+  const never = new Promise<boolean>(() => {})
+  it('keeps the members whose check said yes, in member order', async () => {
+    expect(await freeMembers([3, 5, 7], [Promise.resolve(true), Promise.resolve(false),
+      Promise.reject(new Error('down'))])).toEqual([3])
+    expect(await freeMembers([3, 5], [Promise.resolve(true), Promise.resolve(true)])).toEqual([3, 5])
+  })
+  it('does not wait for a member that never answers once another one is free', async () => {
+    const started = Date.now()
+    expect(await freeMembers([0, 1], [never, Promise.resolve(true)], 20)).toEqual([1])
+    expect(Date.now() - started).toBeLessThan(1000)
+  })
+  it('still takes a member that answers within the grace period', async () => {
+    const late = new Promise<boolean>(r => setTimeout(() => r(true), 5))
+    expect(await freeMembers([0, 1], [late, Promise.resolve(true)], 200)).toEqual([0, 1])
+  })
+  it('answers at once with nobody free when every check has said no', async () => {
+    expect(await freeMembers([0, 1], [Promise.resolve(false), Promise.resolve(false)])).toEqual([])
+    expect(await freeMembers([], [])).toEqual([])
   })
 })

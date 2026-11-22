@@ -47,6 +47,48 @@ export function orderPool(members: number[], inFlight: number[], rotation: numbe
   return [...members].sort((a, b) => (inFlight[a] - inFlight[b]) || (rank.get(a)! - rank.get(b)!))
 }
 
+//  How long a pool waits, once one member has said it is free, for the others to say so too.
+//  Checking the members at once and then waiting for all of them made every utterance wait for
+//  the slowest: a sleeping machine held each one up by its status timeouts (found live
+//  2026-11-13, ~12s per utterance). Healthy members answer within a fraction of this, so load is
+//  still shared; a member that misses it sits out this utterance, and its check (which also wakes
+//  it, or caches its silence) carries on in the background for the next one.
+export const POOL_CHECK_GRACE_MS = 300
+
+//  The members whose check answered true, in `members` order: as soon as every check has
+//  settled, or `graceMs` after the first true. A check that throws counts as false.
+export function freeMembers(members: number[], checks: Promise<boolean>[],
+  graceMs = POOL_CHECK_GRACE_MS): Promise<number[]>{
+  return new Promise((resolve) => {
+    const free = new Set<number>()
+    let pending = checks.length
+    let timer: ReturnType<typeof setTimeout>|undefined
+    let done = false
+    const finish = () => {
+      if (done){ return }
+      done = true
+      if (timer){ clearTimeout(timer) }
+      resolve(members.filter(m => free.has(m)))
+    }
+    if (!pending){
+      finish()
+
+      return
+    }
+    checks.forEach((check, k) => {
+      check.catch(() => false).then((ok) => {
+        if (done){ return }
+        if (ok){
+          free.add(members[k])
+          if (!timer){ timer = setTimeout(finish, graceMs) }
+        }
+        pending -= 1
+        if (!pending){ finish() }
+      })
+    })
+  })
+}
+
 //  ---------------------------------------------------------------- GPU lock reader
 
 export const LOCK_STATUS_CACHE_MS = 10 * 1000

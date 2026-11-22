@@ -1,7 +1,8 @@
 import {describe, it, expect, vi, afterEach} from 'vitest'
 import http from 'http'
 import {stripEventTags, wavFromPcm16, breakerShouldSkip, breakerOnFailure, breakerOnSuccess, newBreakerState,
-  SttBackendSelector, SttBackend, SttResult, HttpSttBackend, WARM_INTERVAL_MS} from '../SttBackend'
+  SttBackendSelector, SttBackend, SttResult, HttpSttBackend, WARM_INTERVAL_MS, STATUS_UNREADABLE_CACHE_MS,
+  gpuWakeUrl} from '../SttBackend'
 
 //  A scriptable stand-in for an HTTP backend: each call takes the next entry of `script`
 //  ('ok' | 'fail' | 'busy') so a test can describe a sequence of GPU availability.
@@ -269,6 +270,81 @@ describe('HttpSttBackend GPU handling', () => {
     const backend = new HttpSttBackend({kind: 'cpu', endpoint: 'http://127.0.0.1:1/asr'})
     expect(await backend.usable()).toBe(true)
   })
+
+  //  Found live (2026-11-13): a sleeping machine's status was asked, and timed out, on every
+  //  utterance, and nothing ever woke it.
+  it('remembers a GPU whose status did not answer, and wakes its machine once', async () => {
+    const calls: string[] = []
+    const server = http.createServer((req, res) => {
+      calls.push(`${req.method} ${req.url}`)
+      if (req.url!.startsWith('/GPUWAKE/')){
+        res.writeHead(200, {'content-type': 'application/json'})
+        res.end(JSON.stringify({machine: 'm', sent: true}))
+      }else{
+        res.writeHead(503)
+        res.end()
+      }
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as any).port
+    const waitForWake = async (n: number) => {
+      for (let t = 0; t < 100 && calls.filter(c => c.includes('GPUWAKE')).length < n; t += 1){
+        await new Promise(r => setTimeout(r, 10))
+      }
+    }
+    try{
+      const backend = new HttpSttBackend({kind: 'gpu', endpoint: `http://127.0.0.1:${port}/ASR`,
+        gpuStatus: `http://127.0.0.1:${port}/SWITCHX`, gpuMode: 'conversation'})
+      expect(await backend.usable()).toBe(false)
+      await waitForWake(1)
+      expect(calls).toEqual(['GET /SWITCHX/lock/status', 'GET /SWITCHX/status', 'GET /GPUWAKE/SWITCHX'])
+      //  Right after, it is not asked at all.
+      calls.length = 0
+      expect(await backend.usable()).toBe(false)
+      expect(calls).toEqual([])
+      //  Later it is asked again, but not woken again so soon.
+      vi.useFakeTimers({toFake: ['Date']})
+      vi.setSystemTime(Date.now() + STATUS_UNREADABLE_CACHE_MS + 1000)
+      expect(await backend.usable()).toBe(false)
+      expect(calls).toContain('GET /SWITCHX/status')
+      await new Promise(r => setTimeout(r, 50))
+      expect(calls.some(c => c.includes('GPUWAKE'))).toBe(false)
+      //  After ACTIVATE_RETRY_MS (3 min) it is woken again.
+      vi.setSystemTime(Date.now() + 3 * 60 * 1000)
+      expect(await backend.usable()).toBe(false)
+      await waitForWake(1)
+      expect(calls).toContain('GET /GPUWAKE/SWITCHX')
+    }finally{ server.close() }
+  })
+
+  it("does not wake anything when gpuWake is ''", async () => {
+    const calls: string[] = []
+    const server = http.createServer((req, res) => {
+      calls.push(`${req.method} ${req.url}`)
+      res.writeHead(503)
+      res.end()
+    })
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+    const port = (server.address() as any).port
+    try{
+      const backend = new HttpSttBackend({kind: 'gpu', endpoint: `http://127.0.0.1:${port}/ASR`,
+        gpuStatus: `http://127.0.0.1:${port}/SWITCHX`, gpuMode: 'conversation', gpuWake: ''})
+      expect(await backend.usable()).toBe(false)
+      await new Promise(r => setTimeout(r, 50))
+      expect(calls.some(c => c.includes('GPUWAKE'))).toBe(false)
+    }finally{ server.close() }
+  })
+})
+
+describe('gpuWakeUrl', () => {
+  it('puts GPUWAKE in front of the last part of the status URL', () => {
+    expect(gpuWakeUrl('https://lm.example.net/SWITCH5070TI')).toBe('https://lm.example.net/GPUWAKE/SWITCH5070TI')
+    expect(gpuWakeUrl('https://lm.example.net/a/SWITCH2/')).toBe('https://lm.example.net/a/GPUWAKE/SWITCH2')
+  })
+  it('has nothing to wake for a bare host or a malformed URL', () => {
+    expect(gpuWakeUrl('http://127.0.0.1:8100')).toBeUndefined()
+    expect(gpuWakeUrl('not a url')).toBeUndefined()
+  })
 })
 
 describe('SttBackendSelector', () => {
@@ -393,6 +469,22 @@ describe('SttBackendSelector with a pool', () => {
       expect((await selector.transcribe(Buffer.alloc(0), 'ja'))?.backend).toBe('gpuB')
     }
     expect(cpu.calls).toBe(0)
+  })
+
+  //  Found live (2026-11-13): every utterance waited for the sleeping member's checks to time out.
+  it('does not wait for a member that is slow to say whether it is free', async () => {
+    class Asleep extends FakeBackend{
+      usable(){ return new Promise<boolean>(() => {}) }
+    }
+    const a = new Asleep('gpuA', ['ok'])
+    const b = backend('gpuB', 'ok')
+    const selector = pooledOf([[a, 'gpu'], [b, 'gpu']])
+    const started = Date.now()
+    for (let n = 0; n < 2; n += 1){
+      expect((await selector.transcribe(Buffer.alloc(0), 'ja'))?.backend).toBe('gpuB')
+    }
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(a.calls).toBe(0)
   })
 
   it('falls to the next rung only when every member is locked or failing', async () => {
