@@ -41,12 +41,15 @@ ffmpeg経由でpushする**だけの機能。現在の唯一の利用者は`vrcs
 
 ## 既知の制限 {#limits}
 
-- **映像コーデックはH264でなければ`-c:v copy`(無変換)が失敗/不正なRTSPに
-  なる**(`ffmpeg.ts`の`_videoArgs`)。VP8などH264以外で送られたProducerを指定すると、
-  `publishProducer`が`streaming: consume ... failed: video codec ... is not supported`
-  と出してその配信を諦める(mediasoupは変換しないので、consumeしても
-  `no compatible media codecs`で失敗するだけ)。`vrcss`側はこれを踏まえ、画面共有の
-  Producer作成時に明示的にH264(`profile-level-id=4d001f`)を指定している。
+- **映像はH264なら`-c:v copy`(無変換)、VP8ならffmpegでH264へ変換する**
+  (`ffmpeg.ts`の`_videoArgs`)。VRChat(AVPro)はRTSPでVP8を再生できないため。
+  変換後はVRChatで映っているChromeの送り方に似せる(Main・yuv420p・Bフレーム無し・
+  キーフレーム3秒ごと・1280x720固定でレターボックス、`-tune zerolatency`は使わない)。
+  `vrcss`は画面共有のProducer作成時にH264 Main(`profile-level-id=4d001f`)を指定するが、
+  ブラウザがそれを出せない(FirefoxはBaselineのみ等)と指定なしでproduceしルーター先頭の
+  VP8になるので、この変換に乗る。H264・VP8以外(VP9など)は`publishProducer`が
+  `streaming: consume ... failed: video codec ... is not supported for streaming (H264 or VP8 only)`
+  と出してその配信を諦める(mediasoupは変換しない)。
 - 音声は`aac`へ変換される(`_audioArgs`、mediasoup側はopusなので必ず変換が
   入る)。
 - MediaMTX(または互換のRTSPサーバー)がこのサーバーと同じホストで稼働している

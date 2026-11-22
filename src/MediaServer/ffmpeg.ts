@@ -115,6 +115,27 @@ export class FFmpeg {
   }
 
   get _videoArgs () {
+    const mime = this._rtpParameters.video?.rtpParameters.codecs[0]?.mimeType.toLowerCase()
+    if (mime === 'video/vp8'){
+      //  VRChat (AVPro) plays only H264 over RTSP, so a VP8 producer is transcoded. Shaped like the
+      //  H264 that Chrome sends and VRChat is known to play: Main profile, 4:2:0, no B-frames.
+      //  Not -tune zerolatency: its sliced threads are reported to give corrupted colour in AVPro.
+      //  A key frame every 3 s matches the key frame requests in streaming.ts.
+      //  Fixed 1280x720 output (letterboxed): WebRTC starts small and raises the resolution later,
+      //  and without a fixed size the encoder would stay at the size of the first frame.
+      return [
+        '-map', '0:v:0',
+        '-vf', 'scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-profile:v', 'main',
+        '-pix_fmt', 'yuv420p',
+        '-bf', '0',
+        '-g', '90', '-keyint_min', '30',
+        '-b:v', '3M', '-maxrate', '4M', '-bufsize', '4M',
+        '-threads', '4',
+      ];
+    }
     return [
       '-map',
       '0:v:0',

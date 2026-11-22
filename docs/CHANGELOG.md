@@ -5,6 +5,16 @@
 
 日付が付く記録はここに。現在形の事実は各 topic README へ。
 
+## 2026-11-22 — VP8の画面共有をH264へ変換してRTSPに流す {#2026-11-22-vp8-transcode}
+
+H264 Mainを出せないブラウザ(Firefoxなど)からの`vrcss`の画面共有はVP8になり、
+`streaming.ts`が`H264 only`で断ってVRChatに何も出なかった。VRChatがRTSPで再生できる
+H264プロファイルは公式資料に無いため、クライアントでBaselineに落とすのはやめ、
+サーバー側でVP8を受けてffmpeg(libx264)でChrome風のH264(Main・4:2:0・Bフレーム無し)に
+変換する(`rtsp-streaming#limits`)。vrc.jpのwebで先に手で当て、H264 Mainを隠したChromeで
+`rtsp://`がh264 Main・1280x720・yuv420p・Bフレーム無しになること、ffmpegのCPUが1コアの
+2割ほどであることを確認。VRChatでの再生は未確認。
+
 ## 2026-08-05 — `GET /room/:roomId`の利用者情報漏洩を修正 {#2026-08-05-rest-leak-fix}
 
 このREST監視エンドポイント(認証無し)が`peers`/`participants`として

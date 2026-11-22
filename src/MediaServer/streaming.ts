@@ -152,18 +152,19 @@ export function publishProducer(streamer:Streamer, router:mediasoup.types.Router
         // Once the gstreamer process is ready to consume resume and send a keyframe
         const codecs:RtpCodecCapability[] = [];
         // Codec passed to the RTP Consumer must match the codec in the Mediasoup router rtpCapabilities
-        const routerCodec = router.rtpCapabilities.codecs?.find(
-          codec => codec.kind === producer.kind && (producer.kind!=='video' || codec.mimeType==='video/H264')
-        )
-        if (routerCodec) codecs.push(routerCodec)
-        //  The relay copies video without transcoding and only H264 works (docs: rtsp-streaming#limits).
-        //  mediasoup cannot convert, so a VP8/VP9 producer would only fail with "no compatible media
-        //  codecs"; say why instead and give up on this stream.
+        //  H264 is relayed as is (-c:v copy). VP8 -- what the vrc.jp client ends up sending from a
+        //  browser without H264 Main, e.g. Firefox -- is consumed as VP8 and transcoded to H264 by
+        //  ffmpeg.ts, since VRChat cannot play VP8 over RTSP. Anything else is refused.
         const producerMime = producer.rtpParameters.codecs[0]?.mimeType
-        if (producer.kind === 'video' && producerMime?.toLowerCase() !== 'video/h264'){
-          fail('consume')(new Error(`video codec ${producerMime} is not supported for streaming (H264 only)`))
+        const videoMime = producerMime?.toLowerCase() === 'video/vp8' ? 'video/VP8' : 'video/H264'
+        if (producer.kind === 'video' && !['video/h264', 'video/vp8'].includes(producerMime?.toLowerCase() ?? '')){
+          fail('consume')(new Error(`video codec ${producerMime} is not supported for streaming (H264 or VP8 only)`))
           return
         }
+        const routerCodec = router.rtpCapabilities.codecs?.find(
+          codec => codec.kind === producer.kind && (producer.kind!=='video' || codec.mimeType===videoMime)
+        )
+        if (routerCodec) codecs.push(routerCodec)
 
         const rtpCapabilities:RtpCapabilities = {
           codecs,
